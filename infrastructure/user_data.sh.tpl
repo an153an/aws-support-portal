@@ -9,8 +9,11 @@ cd app
 npm install --production
 
 # Pull the static asset from the private S3 bucket (allowed by the
-# instance's IAM role, which scopes s3:GetObject to just this bucket)
-aws s3 cp "s3://${bucket_name}/${asset_key}" public/style.css --region "$(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
+# instance's IAM role, which scopes s3:GetObject to just this bucket).
+# IMDSv2 is enforced on AL2023, so a token is required before reading metadata.
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+REGION=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
+aws s3 cp "s3://${bucket_name}/${asset_key}" public/style.css --region "$REGION"
 
 cat > .env <<EOF
 PORT=3000
