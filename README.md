@@ -50,6 +50,62 @@ infrastructure/   Terraform IaC for the full AWS architecture
 
 ---
 
+## Infrastructure details, in plain language
+
+Everything below lives in the `infrastructure/` folder as Terraform files. Here's what each file actually creates and why, without the jargon.
+
+### `provider.tf` — which AWS account/region to use
+Tells Terraform "build everything in AWS, in this region" and pins the AWS provider version so `terraform apply` behaves consistently over time.
+
+### `variables.tf` — the knobs you can turn
+Defines the settings you can customize without touching any other file: which region to deploy to, how big the EC2 instances/database should be, the database name/password, and which SSH key pair to use. Nothing here creates AWS resources by itself — it's just the input form.
+
+### `networking.tf` — the "roads" traffic travels on
+- **VPC**: your own private network inside AWS (`10.0.0.0/16`) — think of it as a walled-off section of AWS just for this project.
+- **2 public subnets + 2 private subnets**, spread across two Availability Zones (basically two separate physical data centers, for redundancy).
+  - *Public* = has a direct route to the internet. Only the load balancer lives here.
+  - *Private* = no direct route in from the internet. The app servers and database live here.
+- **Internet Gateway**: the "door" that lets public subnet traffic reach the internet.
+- **NAT Gateway**: lets things in the *private* subnets (like your EC2 instances) reach out to the internet (e.g., to download npm packages) without allowing anything from the internet to reach *in*. It's a one-way door.
+- **Route tables**: the actual rules saying "public subnet traffic exits through the Internet Gateway" and "private subnet traffic exits through the NAT Gateway."
+
+**Plain-English summary**: the only thing exposed to the internet is the load balancer. Everything else can talk out, but nothing outside can talk in directly.
+
+### `security.tf` — who's allowed to talk to whom
+- **Security Groups** (3 of them) — like a bouncer at each tier's door:
+  - The load balancer's bouncer only lets in web traffic (ports 80/443) from anywhere.
+  - The app server's bouncer only lets in traffic from the load balancer — nothing else, not even from the internet directly.
+  - The database's bouncer only lets in traffic from the app servers — not from the load balancer, not from the internet.
+- **IAM Role for EC2** — instead of putting AWS passwords/keys on the server (which could leak), the EC2 instances get an identity ("role") that AWS itself trusts. That role is allowed to do exactly two things: read files from one specific S3 bucket, and write logs. It cannot touch anything else in the AWS account — not other S3 buckets, not the database settings, nothing.
+
+**Plain-English summary**: every layer only trusts the layer directly in front of it, and the app servers have the bare minimum permissions needed to do their job — nothing more.
+
+### `storage.tf` — the S3 bucket for static files
+Creates a private S3 bucket to hold the app's `style.css` file. Two settings lock it down: "block all public access" (so it can never be made public by accident) and "encrypt everything stored here." The EC2 instances fetch the file from this bucket at startup using their IAM role — there's never a public link to it.
+
+### `database.tf` — the RDS (MySQL) database
+Creates a managed MySQL database that:
+- Lives only in the private subnets (no public internet access at all — `publicly_accessible = false`)
+- Is encrypted at rest
+- Automatically handles backups, patching, and maintenance (that's the benefit of "managed" — you don't SSH into a database server and run updates yourself)
+
+This is what actually stores your tickets and knowledge base articles.
+
+### `compute.tf` — the app servers and load balancer
+- **Launch Template**: a blueprint saying "here's what a server for this app looks like" (which OS image, instance size, security group, IAM role, and startup script to use).
+- **Auto Scaling Group**: keeps a set number of app servers running at all times (currently 2). If one crashes or gets unhealthy, AWS automatically replaces it — you don't have to notice or fix it manually.
+- **Application Load Balancer (ALB)**: the single public entry point. It spreads incoming requests across the healthy app servers and continuously checks a `/health` endpoint on each one — if a server stops responding correctly, the ALB stops sending it traffic until it recovers.
+
+**Plain-English summary**: this is what makes the app resilient — if a server dies, users don't notice, because the load balancer just routes around it and AWS spins up a replacement.
+
+### `user_data.sh.tpl` — what happens the moment a server boots
+A script that runs automatically the first time each EC2 instance starts. It installs Node.js, downloads this app's code, grabs `style.css` from S3, writes a config file with the database connection details, and sets the app up to run permanently in the background (auto-restarting if it ever crashes).
+
+### `outputs.tf` — what Terraform tells you after it's done
+After `terraform apply` finishes, this prints out the load balancer's web address (so you know where to visit the app), the database's internal address, and the S3 bucket's name — the three things you'd actually need to go find and use the app.
+
+---
+
 ## Networking — why it's laid out this way
 
 The VPC (`infrastructure/networking.tf`) splits into **public** and **private** subnets across two Availability Zones:
