@@ -25,6 +25,8 @@ resource "aws_launch_template" "app" {
     db_name     = var.db_name
     db_username = var.db_username
     db_password = var.db_password
+    bucket_name = aws_s3_bucket.assets.bucket
+    asset_key   = aws_s3_object.style_css.key
   }))
 
   tag_specifications {

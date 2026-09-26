@@ -22,3 +22,13 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
 }
 
 data "aws_caller_identity" "current" {}
+
+# Static asset (served by EC2 pulling it from S3 at boot via its IAM role —
+# the bucket itself stays private, no public S3 URLs are ever exposed)
+resource "aws_s3_object" "style_css" {
+  bucket       = aws_s3_bucket.assets.id
+  key          = "static/style.css"
+  source       = "${path.module}/../app/public/style.css"
+  etag         = filemd5("${path.module}/../app/public/style.css")
+  content_type = "text/css"
+}

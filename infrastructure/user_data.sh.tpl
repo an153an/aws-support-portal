@@ -8,6 +8,10 @@ git clone https://github.com/an153an/aws-support-portal.git .
 cd app
 npm install --production
 
+# Pull the static asset from the private S3 bucket (allowed by the
+# instance's IAM role, which scopes s3:GetObject to just this bucket)
+aws s3 cp "s3://${bucket_name}/${asset_key}" public/style.css --region "$(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
+
 cat > .env <<EOF
 PORT=3000
 DB_HOST=${db_host}
