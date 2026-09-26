@@ -157,13 +157,41 @@ Visit `http://localhost:3000`.
 
 Requires [Terraform](https://developer.hashicorp.com/terraform/downloads) and AWS credentials configured (`aws configure`).
 
+### Credentials this deployment needs
+
+Two secrets are required and neither is stored in this repo:
+
+- **`key_pair_name`** — an EC2 key pair for SSH access to the instances. If you don't have one, create it first:
+  ```bash
+  aws ec2 create-key-pair --key-name support-portal-key --region us-east-1 \
+    --query 'KeyMaterial' --output text > support-portal-key.pem
+  chmod 400 support-portal-key.pem
+  ```
+  AWS only stores the public half; the private `.pem` file above is the only copy and only exists on your machine. Losing it means you can no longer SSH into instances launched with that key pair (the app itself doesn't need SSH to run — this is only for manual debugging).
+
+- **`db_password`** — the RDS MySQL master password. Generate a random one rather than typing something memorable:
+  ```bash
+  openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24
+  ```
+
+Put both into `infrastructure/terraform.tfvars` (already `.gitignore`'d — see `infrastructure/variables.tf` for the full variable list):
+
+```hcl
+db_password   = "<generated-password>"
+key_pair_name = "support-portal-key"
+```
+
+Then:
+
 ```bash
 cd infrastructure
 terraform init
-terraform apply \
-  -var="db_password=<choose-a-password>" \
-  -var="key_pair_name=<your-ec2-key-pair>"
+terraform apply
 ```
+
+(Alternatively, pass them inline instead of a tfvars file: `terraform apply -var="db_password=..." -var="key_pair_name=..."`)
+
+**Why this matters**: the `.pem` file and the DB password are both credentials that grant access to real infrastructure — if either were committed to a public GitHub repo, anyone could use them. `.gitignore` in this repo excludes `*.pem`, `.keys/`, and `terraform.tfvars` specifically so this can never happen by accident.
 
 This provisions:
 - A VPC with 2 public + 2 private subnets across 2 AZs
