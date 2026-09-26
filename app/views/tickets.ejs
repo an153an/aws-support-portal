@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tickets - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <h1>Support Tickets</h1>
+
+    <form action="/tickets" method="POST" class="card-form">
+      <input type="text" name="requester" placeholder="Your name" required>
+      <input type="text" name="subject" placeholder="Subject" required>
+      <textarea name="description" placeholder="Describe the issue" required></textarea>
+      <button type="submit">Submit Ticket</button>
+    </form>
+
+    <div class="list">
+      <% tickets.forEach(function(t) { %>
+        <div class="card">
+          <div class="card-header">
+            <strong><%= t.subject %></strong>
+            <span class="status status-<%= t.status %>"><%= t.status %></span>
+          </div>
+          <p class="muted">From <%= t.requester %> &middot; <%= new Date(t.created_at).toLocaleString() %></p>
+          <p><%= t.description %></p>
+          <div class="card-actions">
+            <form action="/tickets/<%= t.id %>/status" method="POST">
+              <select name="status" onchange="this.form.submit()">
+                <option value="open" <%= t.status === 'open' ? 'selected' : '' %>>Open</option>
+                <option value="in_progress" <%= t.status === 'in_progress' ? 'selected' : '' %>>In Progress</option>
+                <option value="closed" <%= t.status === 'closed' ? 'selected' : '' %>>Closed</option>
+              </select>
+            </form>
+            <form action="/tickets/<%= t.id %>/delete" method="POST">
+              <button type="submit">Delete</button>
+            </form>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</body>
+</html>

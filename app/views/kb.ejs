@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Knowledge Base - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <h1>Knowledge Base</h1>
+
+    <form action="/kb" method="POST" class="card-form">
+      <input type="text" name="title" placeholder="Article title" required>
+      <input type="text" name="category" placeholder="Category" required>
+      <textarea name="body" placeholder="Article content" required></textarea>
+      <button type="submit">Publish Article</button>
+    </form>
+
+    <div class="list">
+      <% articles.forEach(function(a) { %>
+        <div class="card">
+          <div class="card-header">
+            <a href="/kb/<%= a.id %>"><strong><%= a.title %></strong></a>
+            <span class="tag"><%= a.category %></span>
+          </div>
+          <p class="muted"><%= new Date(a.created_at).toLocaleString() %></p>
+          <div class="card-actions">
+            <form action="/kb/<%= a.id %>/delete" method="POST">
+              <button type="submit">Delete</button>
+            </form>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</body>
+</html>
