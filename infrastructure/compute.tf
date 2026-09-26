@@ -1,60 +1,91 @@
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
+# ---- Container registry ----
+resource "aws_ecr_repository" "app" {
+  name                 = "${var.project_name}-app"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+  image_scanning_configuration {
+    scan_on_push = true
   }
 }
 
-resource "aws_launch_template" "app" {
-  name_prefix   = "${var.project_name}-app-"
-  image_id      = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
-  key_name      = var.key_pair_name
-
-  iam_instance_profile {
-    name = aws_iam_instance_profile.ec2_profile.name
-  }
-
-  vpc_security_group_ids = [aws_security_group.app.id]
-
-  user_data = base64encode(templatefile("${path.module}/user_data.sh.tpl", {
-    db_host     = aws_db_instance.main.address
-    db_name     = var.db_name
-    db_username = var.db_username
-    db_password = var.db_password
-    bucket_name = aws_s3_bucket.assets.bucket
-    asset_key   = aws_s3_object.style_css.key
-  }))
-
-  tag_specifications {
-    resource_type = "instance"
-    tags          = { Name = "${var.project_name}-app" }
-  }
+# ---- ECS cluster + logging ----
+resource "aws_ecs_cluster" "main" {
+  name = "${var.project_name}-cluster"
 }
 
-resource "aws_autoscaling_group" "app" {
-  name                = "${var.project_name}-asg"
-  desired_capacity    = 2
-  min_size            = 1
-  max_size            = 3
-  vpc_zone_identifier = aws_subnet.private[*].id
-  target_group_arns   = [aws_lb_target_group.app.arn]
-
-  launch_template {
-    id      = aws_launch_template.app.id
-    version = "$Latest"
-  }
-
-  tag {
-    key                 = "Name"
-    value               = "${var.project_name}-app"
-    propagate_at_launch = true
-  }
+resource "aws_cloudwatch_log_group" "app" {
+  name              = "/ecs/${var.project_name}-app"
+  retention_in_days = 7
 }
 
+# ---- Task definition ----
+resource "aws_ecs_task_definition" "app" {
+  family                   = "${var.project_name}-app"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.fargate_cpu
+  memory                   = var.fargate_memory
+  execution_role_arn       = aws_iam_role.ecs_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "app"
+      image     = "${aws_ecr_repository.app.repository_url}:latest"
+      essential = true
+
+      portMappings = [
+        { containerPort = 3000, protocol = "tcp" }
+      ]
+
+      environment = [
+        { name = "PORT", value = "3000" },
+        { name = "DB_HOST", value = aws_db_instance.main.address },
+        { name = "DB_PORT", value = "3306" },
+        { name = "DB_USER", value = var.db_username },
+        { name = "DB_PASSWORD", value = var.db_password },
+        { name = "DB_NAME", value = var.db_name },
+        { name = "ASSETS_BUCKET", value = aws_s3_bucket.assets.bucket },
+        { name = "ASSETS_KEY", value = aws_s3_object.style_css.key },
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.app.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "app"
+        }
+      }
+    }
+  ])
+}
+
+# ---- Service (keeps `desired_count` tasks running, registered with the ALB) ----
+resource "aws_ecs_service" "app" {
+  name            = "${var.project_name}-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.app.arn
+  desired_count   = 2
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = aws_subnet.private[*].id
+    security_groups  = [aws_security_group.app.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app.arn
+    container_name   = "app"
+    container_port   = 3000
+  }
+
+  depends_on = [aws_lb_listener.http]
+}
+
+# ---- Load balancer ----
 resource "aws_lb" "app" {
   name               = "${var.project_name}-alb"
   internal           = false
@@ -64,10 +95,11 @@ resource "aws_lb" "app" {
 }
 
 resource "aws_lb_target_group" "app" {
-  name     = "${var.project_name}-tg"
-  port     = 3000
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name        = "${var.project_name}-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip" # Fargate tasks are registered by ENI IP, not instance ID
 
   health_check {
     path                = "/health"

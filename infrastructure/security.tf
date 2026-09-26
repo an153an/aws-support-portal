@@ -72,23 +72,45 @@ resource "aws_security_group" "db" {
   tags = { Name = "${var.project_name}-db-sg" }
 }
 
-# ---- IAM role for EC2 (least privilege: read app config bucket, write logs) ----
-resource "aws_iam_role" "ec2_role" {
-  name = "${var.project_name}-ec2-role"
+# ---- ECS execution role: lets ECS itself pull the image from ECR and ship
+# container logs to CloudWatch. This is AWS's own infrastructure acting on
+# your behalf, not the app — kept separate from the task role below. ----
+resource "aws_iam_role" "ecs_execution_role" {
+  name = "${var.project_name}-ecs-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Action    = "sts:AssumeRole"
       Effect    = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
     }]
   })
 }
 
-resource "aws_iam_role_policy" "ec2_policy" {
-  name = "${var.project_name}-ec2-policy"
-  role = aws_iam_role.ec2_role.id
+resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
+  role       = aws_iam_role.ecs_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# ---- ECS task role: what the *application code itself* is allowed to do
+# (least privilege, same scope as the old EC2 role — read one S3 bucket). ----
+resource "aws_iam_role" "ecs_task_role" {
+  name = "${var.project_name}-ecs-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ecs_task_policy" {
+  name = "${var.project_name}-ecs-task-policy"
+  role = aws_iam_role.ecs_task_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -97,17 +119,7 @@ resource "aws_iam_role_policy" "ec2_policy" {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:ListBucket"]
         Resource = [aws_s3_bucket.assets.arn, "${aws_s3_bucket.assets.arn}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "*"
       }
     ]
   })
-}
-
-resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "${var.project_name}-ec2-profile"
-  role = aws_iam_role.ec2_role.name
 }

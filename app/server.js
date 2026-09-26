@@ -2,6 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
 const path = require('path');
+const fs = require('fs');
+const { pipeline } = require('stream/promises');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,6 +44,18 @@ async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+}
+
+// Pulls the static asset from the private S3 bucket, authenticated via the
+// ECS task's IAM role — no credentials in the image or the environment.
+async function fetchStaticAsset() {
+  const bucket = process.env.ASSETS_BUCKET;
+  const key = process.env.ASSETS_KEY;
+  if (!bucket || !key) return;
+
+  const client = new S3Client({});
+  const { Body } = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  await pipeline(Body, fs.createWriteStream(path.join(__dirname, 'public', 'style.css')));
 }
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
@@ -99,7 +114,9 @@ app.post('/kb/:id/delete', async (req, res) => {
   res.redirect('/kb');
 });
 
-initDb()
+fetchStaticAsset()
+  .catch((err) => console.error('Could not fetch static asset from S3, using bundled copy:', err.message))
+  .then(() => initDb())
   .then(() => {
     app.listen(PORT, () => console.log(`Support portal running on port ${PORT}`));
   })

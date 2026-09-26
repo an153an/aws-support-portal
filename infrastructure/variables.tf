@@ -18,8 +18,14 @@ variable "private_subnet_cidrs" {
   default = ["10.0.11.0/24", "10.0.12.0/24"]
 }
 
-variable "instance_type" {
-  default = "t3.micro"
+variable "fargate_cpu" {
+  description = "Task-level vCPU units (256 = 0.25 vCPU)"
+  default     = "256"
+}
+
+variable "fargate_memory" {
+  description = "Task-level memory in MB"
+  default     = "512"
 }
 
 variable "db_instance_class" {
@@ -37,10 +43,6 @@ variable "db_username" {
 variable "db_password" {
   description = "Master password for RDS (set via terraform.tfvars or TF_VAR_db_password)"
   sensitive   = true
-}
-
-variable "key_pair_name" {
-  description = "Existing EC2 key pair name for SSH access"
 }
 
 variable "db_snapshot_identifier" {

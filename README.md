@@ -9,6 +9,8 @@ The project demonstrates a 3-tier architecture on AWS covering **compute, storag
 
 ## Architecture
 
+The app is containerized and runs on **ECS Fargate** — no EC2 instances to patch or manage; AWS runs the containers directly.
+
 ```
                         Internet
                             │
@@ -20,8 +22,8 @@ The project demonstrates a 3-tier architecture on AWS covering **compute, storag
               ┌─────────────┴─────────────┐
               │                           │
       ┌───────▼───────┐           ┌───────▼───────┐
-      │  EC2 (app)     │           │  EC2 (app)     │   (private subnets,
-      │  Auto Scaling  │  ◄─────►  │  Auto Scaling  │    outbound via NAT GW)
+      │ Fargate task   │           │ Fargate task   │   (private subnets,
+      │  (container)   │  ◄─────►  │  (container)   │    outbound via NAT GW)
       └───────┬───────┘           └───────┬───────┘
               │                           │
               └─────────────┬─────────────┘
@@ -30,15 +32,16 @@ The project demonstrates a 3-tier architecture on AWS covering **compute, storag
                     │   RDS (MySQL)   │  (private subnets)
                     └────────────────┘
 
-      S3 bucket (encrypted, private) — static assets pulled by EC2 at boot
+      ECR — stores the built container image
+      S3 bucket (encrypted, private) — static asset fetched by the container at startup
 ```
 
 | Pillar | AWS Service | Purpose |
 |---|---|---|
-| Compute | EC2 (Auto Scaling Group) | Runs the Node.js app |
-| Storage | S3 | Static assets (`style.css`), encrypted & private |
+| Compute | ECS on Fargate | Runs the containerized Node.js app, no servers to manage |
+| Storage | S3, ECR | Static assets (`style.css`) + the app's container image |
 | Networking | VPC, public/private subnets, ALB, NAT Gateway | Routes traffic, isolates app/db tier |
-| Security | Security Groups, IAM roles | Least-privilege access between tiers |
+| Security | Security Groups, IAM roles (task + execution) | Least-privilege access between tiers |
 | Database | RDS (MySQL) | Stores tickets and KB articles |
 
 ## Repo structure
@@ -58,7 +61,7 @@ Everything below lives in `infrastructure/` as Terraform (HCL) files, using the 
 Pins `required_version >= 1.5.0` for Terraform and `~> 5.0` for the AWS provider, and configures the provider with `region = var.aws_region`. Also declares `data "aws_availability_zones" "available"` (filtered to `state = "available"`), which `networking.tf` and `compute.tf` index into for AZ placement.
 
 ### `variables.tf`
-Input variables consumed across the other files — no resources declared here. Notable ones: `vpc_cidr` (`10.0.0.0/16`), `public_subnet_cidrs`/`private_subnet_cidrs` (2 CIDRs each), `instance_type` (`t3.micro`), `db_instance_class` (`db.t3.micro`), and `db_password`/`key_pair_name`, which have no defaults and must be passed via `-var` or `TF_VAR_*` env vars at apply time (kept out of the repo intentionally).
+Input variables consumed across the other files — no resources declared here. Notable ones: `vpc_cidr` (`10.0.0.0/16`), `public_subnet_cidrs`/`private_subnet_cidrs` (2 CIDRs each), `fargate_cpu`/`fargate_memory` (`256`/`512`, i.e. 0.25 vCPU / 512MB per task), `db_instance_class` (`db.t3.micro`), and `db_password`, which has no default and must be passed via `-var` or `TF_VAR_*` env vars at apply time (kept out of the repo intentionally).
 
 ### `networking.tf`
 - `aws_vpc.main` — CIDR `10.0.0.0/16`, with `enable_dns_support` and `enable_dns_hostnames` set so instances get resolvable private DNS names.
@@ -80,7 +83,12 @@ Three `aws_security_group` resources, each referencing the previous SG's ID inst
 | `app` | `security_groups = [aws_security_group.alb.id]` on 3000/tcp | all |
 | `db` | `security_groups = [aws_security_group.app.id]` on 3306/tcp | all |
 
-IAM side — `aws_iam_role.ec2_role` (trust policy: `Principal.Service = "ec2.amazonaws.com"` via `sts:AssumeRole`) wrapped in `aws_iam_instance_profile.ec2_profile` (required to attach a role to an EC2 launch template) with this inline policy (`aws_iam_role_policy.ec2_policy`):
+`app` is attached directly to each Fargate task's ENI (via `network_configuration` in `aws_ecs_service.app`) — Fargate's `awsvpc` networking mode gives every task its own network interface, so the same SG-to-SG model applies to containers exactly as it did to EC2 instances.
+
+IAM side — **two roles**, intentionally split by what they're allowed to do:
+
+- `aws_iam_role.ecs_execution_role` — trusted by `ecs-tasks.amazonaws.com`, with the AWS-managed `AmazonECSTaskExecutionRolePolicy` attached. This is what lets **ECS itself** pull the image from ECR and write container logs to CloudWatch — it has nothing to do with what the app can do.
+- `aws_iam_role.ecs_task_role` — also trusted by `ecs-tasks.amazonaws.com`, but this is what the **application code** runs as. Its inline policy (`aws_iam_role_policy.ecs_task_policy`):
 
 ```json
 {
@@ -93,54 +101,46 @@ IAM side — `aws_iam_role.ec2_role` (trust policy: `Principal.Service = "ec2.am
         "arn:aws:s3:::support-portal-assets-<account-id>",
         "arn:aws:s3:::support-portal-assets-<account-id>/*"
       ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
-      "Resource": "*"
     }
   ]
 }
 ```
 
-Scoped to one bucket ARN (not `"*"`) — no `PutObject`/`DeleteObject`/`iam:*`/`ec2:*`. `logs:*` is `Resource: "*"` only because log group ARNs don't exist yet at policy-creation time.
+Scoped to one bucket ARN (not `"*"`) — no `PutObject`/`DeleteObject`/`iam:*`/`ecs:*`. Splitting execution vs. task roles means a compromised app container still can't touch ECS/ECR/CloudWatch permissions — those belong to a role the app never assumes.
 
 ### `storage.tf`
 - `aws_s3_bucket.assets` — bucket name includes `data.aws_caller_identity.current.account_id` to guarantee global uniqueness without hardcoding an org-specific prefix.
 - `aws_s3_bucket_public_access_block.assets` — all four flags true; overrides any ACL/policy that might later grant public access, regardless of what gets misconfigured on the bucket itself.
 - `aws_s3_bucket_server_side_encryption_configuration.assets` — default SSE-S3 (`AES256`) on all objects.
-- `aws_s3_object.style_css` — uploads `app/public/style.css` to `static/style.css`; `etag = filemd5(...)` triggers a re-upload on `apply` whenever the local file changes.
+- `aws_s3_object.style_css` — uploads `app/public/style.css` to `static/style.css`; `etag = filemd5(...)` triggers a re-upload on `apply` whenever the local file changes. The running container fetches this object itself at startup (`app/server.js`, `fetchStaticAsset()`) using the AWS SDK for JS and the task role's credentials — no `aws` CLI needed inside the container image.
 
 ### `database.tf`
 - `aws_db_subnet_group.main` — built from `aws_subnet.private[*].id`, which is what forces RDS to live only in the private subnets (RDS subnet groups require ≥2 subnets in ≥2 AZs).
 - `aws_db_instance.main` — `engine = "mysql"` `8.0`, `instance_class = var.db_instance_class` (`db.t3.micro`), `allocated_storage = 20` (GB, gp2 by default), `storage_encrypted = true`, `publicly_accessible = false`, `multi_az = false` (single-AZ to keep cost down for a class project — flip this to `true` for real HA), `skip_final_snapshot = true` (so `terraform destroy` doesn't hang waiting for a manual snapshot name — fine for a demo, you'd remove this in production).
 
 ### `compute.tf`
-- `data "aws_ami" "amazon_linux"` — looks up the latest Amazon Linux 2023 x86_64 AMI by name filter at apply time, so the image is never hardcoded/stale.
-- `aws_launch_template.app` — bundles the AMI, `instance_type`, `key_name`, the `app` security group, the IAM instance profile, and a base64-encoded `user_data` script rendered from `user_data.sh.tpl` with the RDS endpoint, DB credentials, and S3 bucket/key interpolated in via `templatefile()`.
-- `aws_autoscaling_group.app` — `min_size = 1`, `desired_capacity = 2`, `max_size = 3`; deployed across `aws_subnet.private[*].id` (both AZs); registers instances into `aws_lb_target_group.app` automatically via `target_group_arns`.
-- `aws_lb.app` — internet-facing (`internal = false`) ALB in the two public subnets, using the `alb` security group.
-- `aws_lb_target_group.app` — routes to port 3000/HTTP on targets, with a health check hitting `GET /health` every 30s, 2 consecutive successes/failures to flip healthy/unhealthy.
-- `aws_lb_listener.http` — listens on port 80, forwards everything to the target group (no path-based routing needed for a single-service app).
-
-### `user_data.sh.tpl`
-Runs once at first boot (root shell). `dnf install`s Node.js/npm/git, clones this repo into `/opt/app`, `npm install --production`, pulls `style.css` from S3 via `aws s3 cp` (auth via instance profile, no credentials in the script), writes `.env` with the interpolated DB values, then registers a `systemd` unit (`support-portal.service`, `Restart=always`) so the app survives crashes/reboots without a live SSH session.
+- `aws_ecr_repository.app` — a private container registry for the app's Docker image, with `scan_on_push = true` (Amazon ECR scans each pushed image for known OS/package vulnerabilities).
+- `aws_ecs_cluster.main` — the logical grouping Fargate tasks run under. With Fargate there's no EC2 fleet backing this cluster — AWS manages the underlying compute entirely.
+- `aws_cloudwatch_log_group.app` — where container stdout/stderr goes (7-day retention), since there's no instance to SSH into and `tail` a log file on.
+- `aws_ecs_task_definition.app` — the container-level equivalent of the old launch template: image URI (`<ecr-repo>:latest`), CPU/memory (`fargate_cpu`/`fargate_memory`), the container's port (3000), its environment variables (DB connection info, S3 bucket/key — injected directly as task definition environment, not written to a file on disk), and which log group to ship output to. Also where `execution_role_arn` and `task_role_arn` are attached.
+- `aws_ecs_service.app` — keeps `desired_count = 2` tasks running on Fargate, in the private subnets, using the `app` security group (`network_configuration`), and registers each task into `aws_lb_target_group.app` (`load_balancer` block). If a task dies, ECS itself launches a replacement — the Fargate equivalent of what the Auto Scaling Group used to do.
+- `aws_lb.app` — internet-facing (`internal = false`) ALB in the two public subnets, using the `alb` security group. Unchanged from the EC2 version.
+- `aws_lb_target_group.app` — `target_type = "ip"` (not `"instance"`) since Fargate tasks are registered by their ENI's private IP, not an EC2 instance ID. Same health check as before: `GET /health` every 30s, 2 consecutive successes/failures to flip healthy/unhealthy.
+- `aws_lb_listener.http` — listens on port 80, forwards everything to the target group. Unchanged.
 
 ### `outputs.tf`
-`alb_dns_name`, `rds_endpoint`, `s3_bucket_name` — printed after `apply`, retrievable later via `terraform output`.
+`alb_dns_name`, `rds_endpoint`, `s3_bucket_name`, `ecr_repository_url` — printed after `apply`, retrievable later via `terraform output`. `ecr_repository_url` is where you push the built image before the ECS service can actually start healthy tasks.
 
 ---
 
 ## Deployment flow (how it all fits together)
 
-1. Terraform provisions the VPC/subnets/gateways, then the RDS instance, then the S3 bucket + uploaded asset, then the EC2 launch template/Auto Scaling Group/ALB (in dependency order, handled automatically by Terraform's resource graph).
-2. Each EC2 instance boots with a **user-data script** (`infrastructure/user_data.sh.tpl`) that:
-   - Installs Node.js
-   - Clones this repo and installs the app's dependencies
-   - Pulls `style.css` from the private S3 bucket via its IAM role
-   - Writes a `.env` file with the RDS connection details (injected by Terraform, not committed to git)
-   - Registers and starts the app as a `systemd` service, so it restarts automatically if it crashes or the instance reboots
-3. The ALB health-checks each instance on `/health` and only routes traffic to instances that respond, so a broken deploy doesn't take down the whole app.
+1. `docker build` packages the app (`app/Dockerfile`) into a container image.
+2. The image is pushed to the ECR repository Terraform creates (`aws_ecr_repository.app`).
+3. Terraform provisions the VPC/subnets/gateways, the RDS instance, the S3 bucket + uploaded asset, the ECR repo, and the ECS cluster/task definition/service/ALB — in dependency order via Terraform's resource graph.
+4. The ECS service launches Fargate tasks running the pushed image, each getting the RDS connection info and S3 bucket/key as container environment variables directly from the task definition (no boot script, no file written to disk).
+5. On container startup, `app/server.js` fetches `style.css` from the private S3 bucket using the task's IAM role, then connects to RDS and starts listening.
+6. The ALB health-checks each task on `/health` and only routes traffic to tasks that respond; ECS replaces any task that dies or fails checks.
 
 ## Running the app locally
 
@@ -159,49 +159,55 @@ Requires [Terraform](https://developer.hashicorp.com/terraform/downloads) and AW
 
 ### Credentials this deployment needs
 
-Two secrets are required and neither is stored in this repo:
-
-- **`key_pair_name`** — an EC2 key pair for SSH access to the instances. If you don't have one, create it first:
-  ```bash
-  aws ec2 create-key-pair --key-name support-portal-key --region us-east-1 \
-    --query 'KeyMaterial' --output text > support-portal-key.pem
-  chmod 400 support-portal-key.pem
-  ```
-  AWS only stores the public half; the private `.pem` file above is the only copy and only exists on your machine. Losing it means you can no longer SSH into instances launched with that key pair (the app itself doesn't need SSH to run — this is only for manual debugging).
+Only one secret is required, and it's never stored in this repo:
 
 - **`db_password`** — the RDS MySQL master password. Generate a random one rather than typing something memorable:
   ```bash
   openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24
   ```
 
-Put both into `infrastructure/terraform.tfvars` (already `.gitignore`'d — see `infrastructure/variables.tf` for the full variable list):
+Put it into `infrastructure/terraform.tfvars` (already `.gitignore`'d — see `infrastructure/variables.tf` for the full variable list):
 
 ```hcl
-db_password   = "<generated-password>"
-key_pair_name = "support-portal-key"
+db_password = "<generated-password>"
 ```
 
-Then:
+(There's no EC2 key pair to manage anymore — Fargate tasks don't have SSH access at all; debugging goes through CloudWatch Logs or `aws ecs execute-command` instead.)
+
+### Build and deploy
 
 ```bash
 cd infrastructure
 terraform init
-terraform apply
+terraform apply    # creates the ECR repo, ECS cluster/service, ALB, RDS, VPC, etc.
 ```
 
-(Alternatively, pass them inline instead of a tfvars file: `terraform apply -var="db_password=..." -var="key_pair_name=..."`)
+The ECS service will be created but its tasks will fail to start until an image actually exists in ECR — that's expected on a first apply. Build and push one:
 
-**Why this matters**: the `.pem` file and the DB password are both credentials that grant access to real infrastructure — if either were committed to a public GitHub repo, anyone could use them. `.gitignore` in this repo excludes `*.pem`, `.keys/`, and `terraform.tfvars` specifically so this can never happen by accident.
+```bash
+cd ../app
+REPO_URL=$(cd ../infrastructure && terraform output -raw ecr_repository_url)
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "${REPO_URL%/*}"
+docker build -t "$REPO_URL:latest" .
+docker push "$REPO_URL:latest"
+```
+
+Then force the service to pick up the new image (it won't retry a failed image pull on its own until told to):
+
+```bash
+aws ecs update-service --cluster support-portal-cluster --service support-portal-service --force-new-deployment --region us-east-1
+```
 
 This provisions:
 - A VPC with 2 public + 2 private subnets across 2 AZs
 - An Internet Gateway + NAT Gateway
-- An Application Load Balancer + Auto Scaling Group of EC2 instances running the app
+- An Application Load Balancer + ECS Fargate service running the containerized app
+- An ECR repository holding the app's container image
 - An RDS MySQL instance in the private subnets
-- An encrypted, private S3 bucket (with the app's static asset pre-uploaded)
-- Security groups restricting traffic tier-to-tier, and an IAM role scoped to exactly what the app needs
+- An encrypted, private S3 bucket (with the app's static asset pre-uploaded, fetched by the container at runtime)
+- Security groups restricting traffic tier-to-tier, and separate ECS execution/task IAM roles scoped to exactly what each needs
 
-After `apply`, the app URL is printed as the `alb_dns_name` output.
+After `apply`, the app URL is printed as the `alb_dns_name` output (once tasks are healthy).
 
 ### Restoring from a snapshot
 
@@ -230,5 +236,6 @@ terraform destroy
 ## Tech stack
 
 - Node.js + Express + EJS (server-rendered views)
+- Docker (containerized app, run on ECS Fargate)
 - MySQL (via RDS)
 - Terraform for infrastructure as code
