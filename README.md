@@ -175,6 +175,24 @@ This provisions:
 
 After `apply`, the app URL is printed as the `alb_dns_name` output.
 
+### Restoring from a snapshot
+
+By default `terraform apply` creates a brand-new, empty database. `terraform destroy` deletes the RDS instance permanently (`skip_final_snapshot = true`), so any tickets/articles created are lost unless you took a manual snapshot first:
+
+```bash
+aws rds create-db-snapshot \
+  --db-instance-identifier support-portal-db \
+  --db-snapshot-identifier <snapshot-name>
+```
+
+To have the *next* `terraform apply` restore that data instead of starting empty, set `db_snapshot_identifier` in `terraform.tfvars`:
+
+```hcl
+db_snapshot_identifier = "<snapshot-name>"
+```
+
+Terraform will restore the RDS instance from that snapshot (`database.tf`) — note this replaces any existing RDS instance if one is already running, since `db_name`/`username` are baked into the snapshot and can't be changed on restore.
+
 To tear everything down:
 
 ```bash

@@ -6,15 +6,20 @@ resource "aws_db_subnet_group" "main" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier             = "${var.project_name}-db"
-  engine                 = "mysql"
-  engine_version         = "8.0"
-  instance_class         = var.db_instance_class
-  allocated_storage      = 20
-  storage_encrypted      = true
-  db_name                = var.db_name
-  username               = var.db_username
-  password               = var.db_password
+  identifier          = "${var.project_name}-db"
+  engine              = "mysql"
+  engine_version      = "8.0"
+  instance_class      = var.db_instance_class
+  allocated_storage   = 20
+  storage_encrypted   = true
+  snapshot_identifier = var.db_snapshot_identifier
+
+  # db_name/username are baked into the snapshot and ignored by AWS when
+  # restoring from one; only set them for a fresh (non-restored) database.
+  db_name  = var.db_snapshot_identifier == null ? var.db_name : null
+  username = var.db_snapshot_identifier == null ? var.db_username : null
+  password = var.db_password
+
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.db.id]
   publicly_accessible    = false

@@ -42,3 +42,9 @@ variable "db_password" {
 variable "key_pair_name" {
   description = "Existing EC2 key pair name for SSH access"
 }
+
+variable "db_snapshot_identifier" {
+  description = "RDS snapshot to restore the database from. Leave null to create a fresh, empty database instead."
+  type        = string
+  default     = null
+}
