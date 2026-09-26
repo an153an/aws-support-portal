@@ -108,6 +108,8 @@ IAM side — **two roles**, intentionally split by what they're allowed to do:
 
 Scoped to one bucket ARN (not `"*"`) — no `PutObject`/`DeleteObject`/`iam:*`/`ecs:*`. Splitting execution vs. task roles means a compromised app container still can't touch ECS/ECR/CloudWatch permissions — those belong to a role the app never assumes.
 
+**Current IAM footprint is exactly these two roles** — `ecs_execution_role` and `ecs_task_role`, both defined here in `security.tf`, nothing attached outside of Terraform. (An earlier EC2-based iteration of this project briefly attached the AWS-managed `AmazonSSMManagedInstanceCore` policy to a since-deleted EC2 role, purely to debug a boot failure over Systems Manager — it was detached again immediately after and no longer exists, since that role itself was removed in the move to Fargate.)
+
 ### `storage.tf`
 - `aws_s3_bucket.assets` — bucket name includes `data.aws_caller_identity.current.account_id` to guarantee global uniqueness without hardcoding an org-specific prefix.
 - `aws_s3_bucket_public_access_block.assets` — all four flags true; overrides any ACL/policy that might later grant public access, regardless of what gets misconfigured on the bucket itself.
@@ -122,7 +124,7 @@ Scoped to one bucket ARN (not `"*"`) — no `PutObject`/`DeleteObject`/`iam:*`/`
 - `aws_ecr_repository.app` — a private container registry for the app's Docker image, with `scan_on_push = true` (Amazon ECR scans each pushed image for known OS/package vulnerabilities).
 - `aws_ecs_cluster.main` — the logical grouping Fargate tasks run under. With Fargate there's no EC2 fleet backing this cluster — AWS manages the underlying compute entirely.
 - `aws_cloudwatch_log_group.app` — where container stdout/stderr goes (7-day retention), since there's no instance to SSH into and `tail` a log file on.
-- `aws_ecs_task_definition.app` — the container-level equivalent of the old launch template: image URI (`<ecr-repo>:latest`), CPU/memory (`fargate_cpu`/`fargate_memory`), the container's port (3000), its environment variables (DB connection info, S3 bucket/key — injected directly as task definition environment, not written to a file on disk), and which log group to ship output to. Also where `execution_role_arn` and `task_role_arn` are attached.
+- `aws_ecs_task_definition.app` — the container-level equivalent of the old launch template: image URI (`<ecr-repo>:latest`), CPU/memory (`fargate_cpu`/`fargate_memory`), the container's port (3000), its environment variables (DB connection info, S3 bucket/key — injected directly as task definition environment, not written to a file on disk), and which log group to ship output to. Also where `execution_role_arn` and `task_role_arn` are attached. `runtime_platform` explicitly pins `cpu_architecture = "X86_64"` — see "What actually broke" below for why this is spelled out rather than left to default.
 - `aws_ecs_service.app` — keeps `desired_count = 2` tasks running on Fargate, in the private subnets, using the `app` security group (`network_configuration`), and registers each task into `aws_lb_target_group.app` (`load_balancer` block). If a task dies, ECS itself launches a replacement — the Fargate equivalent of what the Auto Scaling Group used to do.
 - `aws_lb.app` — internet-facing (`internal = false`) ALB in the two public subnets, using the `alb` security group. Unchanged from the EC2 version.
 - `aws_lb_target_group.app` — `target_type = "ip"` (not `"instance"`) since Fargate tasks are registered by their ENI's private IP, not an EC2 instance ID. Same health check as before: `GET /health` every 30s, 2 consecutive successes/failures to flip healthy/unhealthy.
@@ -188,9 +190,10 @@ The ECS service will be created but its tasks will fail to start until an image 
 cd ../app
 REPO_URL=$(cd ../infrastructure && terraform output -raw ecr_repository_url)
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "${REPO_URL%/*}"
-docker build -t "$REPO_URL:latest" .
-docker push "$REPO_URL:latest"
+docker buildx build --platform linux/amd64 -t "$REPO_URL:latest" --push .
 ```
+
+**Use `docker buildx build --platform linux/amd64`, not plain `docker build`** — see "What actually broke" below for why this matters if you're on an Apple Silicon (arm64) Mac. If `docker buildx` isn't available: `brew install docker-buildx`, then add `"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]` to `~/.docker/config.json`.
 
 Then force the service to pick up the new image (it won't retry a failed image pull on its own until told to):
 
@@ -208,6 +211,29 @@ This provisions:
 - Security groups restricting traffic tier-to-tier, and separate ECS execution/task IAM roles scoped to exactly what each needs
 
 After `apply`, the app URL is printed as the `alb_dns_name` output (once tasks are healthy).
+
+### What actually broke (and why it's worth knowing)
+
+The first deploy to Fargate wasn't clean — both tasks crash-looped, cycling through `PENDING` → `RUNNING` → `STOPPED` every few seconds, with the ALB target group permanently unhealthy.
+
+`aws ecs describe-tasks` showed `stoppedReason: "Essential container in task exited"`, exit code `255` — not useful on its own. The actual cause was in CloudWatch Logs (`/ecs/support-portal-app`):
+
+```
+exec /usr/local/bin/docker-entrypoint.sh: exec format error
+```
+
+**Root cause**: the image was built on an Apple Silicon (arm64) Mac with a plain `docker build`, which defaults to the *host's* architecture. Fargate tasks run on `X86_64` by default. The container never even got a chance to run Node — the kernel refused to execute an arm64 binary on an x86_64 machine at all, which is exactly what "exec format error" means.
+
+**Fix**: install the `docker-buildx` plugin and build with an explicit target platform:
+
+```bash
+brew install docker-buildx
+docker buildx build --platform linux/amd64 -t "$REPO_URL:latest" --push .
+```
+
+Also added `runtime_platform { cpu_architecture = "X86_64" }` to `aws_ecs_task_definition.app` (`compute.tf`) — not because it changes Fargate's default, but because it makes the requirement explicit in code instead of implicit in whoever happens to run the build command next (and on Apple Silicon hardware, that assumption breaks silently otherwise).
+
+This is a genuinely common containerization pitfall: any team with both Apple Silicon laptops and x86-only cloud infrastructure hits this eventually. It's also unrelated to a similar-looking issue from an earlier iteration of this project (a plain-EC2 deployment) where a metadata-service token requirement (IMDSv2 on Amazon Linux 2023) broke a boot script the same way — different root cause, same lesson: a boot/runtime failure with no application-level error message is almost always an environment mismatch, not a bug in the app code itself.
 
 ### Restoring from a snapshot
 

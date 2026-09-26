@@ -29,6 +29,15 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
+  # Explicit rather than left to the (matching) default: documents that
+  # images must be built for x86_64, since a build machine's own
+  # architecture (e.g. Apple Silicon) can silently produce an arm64 image
+  # otherwise — which crash-loops with "exec format error" at runtime.
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
   container_definitions = jsonencode([
     {
       name      = "app"
