@@ -16,6 +16,22 @@
       <button type="submit">Submit Ticket</button>
     </form>
 
+    <form action="/tickets" method="GET" class="filter-bar">
+      <input type="search" name="q" value="<%= filters.q %>" placeholder="Search subject or description">
+      <% if (user.role !== 'customer') { %>
+        <input type="search" name="requester" value="<%= filters.requester %>" placeholder="Requester">
+      <% } %>
+      <select name="status">
+        <option value="">All statuses</option>
+        <% ['open', 'in_progress', 'closed'].forEach(function(s) { %>
+          <option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= s.replace('_', ' ') %></option>
+        <% }) %>
+      </select>
+      <button type="submit">Search</button>
+      <a href="/tickets">Clear</a>
+    </form>
+
+    <% if (!tickets.length) { %><p class="muted">No tickets match.</p><% } %>
     <div class="list">
       <% tickets.forEach(function(t) { %>
         <div class="card">

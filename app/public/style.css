@@ -37,3 +37,7 @@ form .link-button:hover { background: none; color: #fff; }
 .auth-box label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; }
 .alert { background: #fee2e2; color: #991b1b; padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
 .notice { background: #dcfce7; color: #166534; padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+.filter-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1.2rem; }
+.filter-bar input { flex: 1; min-width: 140px; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; }
+.filter-bar button { background: #2563eb; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 6px; }
+form.filter-bar button:hover { background: #1d4ed8; }

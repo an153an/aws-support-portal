@@ -123,14 +123,33 @@ const getStaff = async () => (await pool.query(
 
 app.get('/', (req, res) => res.redirect('/tickets'));
 
+// ---- Search helpers ----
+// Escapes % and _ so user input is matched literally inside LIKE.
+const like = (v) => `%${String(v).replace(/[\\%_]/g, '\\$&')}%`;
+const STATUSES = ['open', 'in_progress', 'closed'];
+
+// Builds the WHERE clause for the ticket list from the query string.
+// Customers are always restricted to their own tickets, whatever they ask for.
+function ticketFilters(req) {
+  const q = (req.query.q || '').trim();
+  const requester = isStaff(req.user) ? (req.query.requester || '').trim() : '';
+  const status = STATUSES.includes(req.query.status) ? req.query.status : '';
+  const where = [];
+  const params = [];
+  if (!isStaff(req.user)) { where.push('t.created_by = ?'); params.push(req.user.sub); }
+  if (q) { where.push('(t.subject LIKE ? OR t.description LIKE ?)'); params.push(like(q), like(q)); }
+  if (requester) { where.push('t.requester LIKE ?'); params.push(like(requester)); }
+  if (status) { where.push('t.status = ?'); params.push(status); }
+  return { where: where.length ? `WHERE ${where.join(' AND ')}` : '', params, filters: { q, requester, status } };
+}
+
 // ---- Tickets ----
-// Customers only ever see tickets they created; agents and admins see all.
 app.get('/tickets', wrap(async (req, res) => {
-  const select = 'SELECT t.*, a.name AS assignee_name FROM tickets t LEFT JOIN users a ON a.sub = t.assignee_sub';
-  const [rows] = isStaff(req.user)
-    ? await pool.query(`${select} ORDER BY t.created_at DESC`)
-    : await pool.query(`${select} WHERE t.created_by = ? ORDER BY t.created_at DESC`, [req.user.sub]);
-  res.render('tickets', { tickets: rows, staff: isStaff(req.user) ? await getStaff() : [] });
+  const { where, params, filters } = ticketFilters(req);
+  const [rows] = await pool.query(
+    `SELECT t.*, a.name AS assignee_name FROM tickets t LEFT JOIN users a ON a.sub = t.assignee_sub
+     ${where} ORDER BY t.created_at DESC`, params);
+  res.render('tickets', { tickets: rows, filters, staff: isStaff(req.user) ? await getStaff() : [] });
 }));
 
 app.post('/tickets', wrap(async (req, res) => {
@@ -166,8 +185,16 @@ app.post('/tickets/:id/delete', adminOnly, wrap(async (req, res) => {
 
 // ---- Knowledge Base ----
 app.get('/kb', wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT * FROM articles ORDER BY created_at DESC');
-  res.render('kb', { articles: rows });
+  const q = (req.query.q || '').trim();
+  const category = (req.query.category || '').trim();
+  const where = [];
+  const params = [];
+  if (q) { where.push('(title LIKE ? OR body LIKE ? OR category LIKE ?)'); params.push(like(q), like(q), like(q)); }
+  if (category) { where.push('category = ?'); params.push(category); }
+  const [rows] = await pool.query(
+    `SELECT * FROM articles ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`, params);
+  const [cats] = await pool.query('SELECT DISTINCT category FROM articles ORDER BY category');
+  res.render('kb', { articles: rows, categories: cats.map((c) => c.category), filters: { q, category } });
 }));
 
 app.get('/kb/:id', wrap(async (req, res) => {

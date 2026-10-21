@@ -19,6 +19,19 @@
     </form>
     <% } %>
 
+    <form action="/kb" method="GET" class="filter-bar">
+      <input type="search" name="q" value="<%= filters.q %>" placeholder="Search title, body or category">
+      <select name="category">
+        <option value="">All categories</option>
+        <% categories.forEach(function(c) { %>
+          <option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option>
+        <% }) %>
+      </select>
+      <button type="submit">Search</button>
+      <a href="/kb">Clear</a>
+    </form>
+
+    <% if (!articles.length) { %><p class="muted">No articles match.</p><% } %>
     <div class="list">
       <% articles.forEach(function(a) { %>
         <div class="card">
