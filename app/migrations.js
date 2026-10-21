@@ -59,4 +59,37 @@ module.exports = [
       `ALTER TABLE tickets ADD COLUMN category VARCHAR(100) NOT NULL DEFAULT 'general'`,
     ],
   },
+  {
+    id: 5,
+    name: 'ticket comments, history and closed_at',
+    sql: [
+      `ALTER TABLE tickets ADD COLUMN closed_at TIMESTAMP NULL`,
+      // parent_id makes replies threaded; deleting a ticket (or a parent comment) cascades.
+      `CREATE TABLE IF NOT EXISTS ticket_comments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_id INT NOT NULL,
+        parent_id INT NULL,
+        author_sub VARCHAR(64) NOT NULL,
+        author_name VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_comments_ticket (ticket_id),
+        FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_id) REFERENCES ticket_comments(id) ON DELETE CASCADE
+      )`,
+      // One row per change to a ticket field: who, what, from, to, when.
+      `CREATE TABLE IF NOT EXISTS ticket_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_id INT NOT NULL,
+        actor_sub VARCHAR(64) NOT NULL,
+        actor_name VARCHAR(255) NOT NULL,
+        field VARCHAR(50) NOT NULL,
+        old_value VARCHAR(255) NULL,
+        new_value VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_history_ticket (ticket_id),
+        FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+      )`,
+    ],
+  },
 ];

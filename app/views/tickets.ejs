@@ -56,7 +56,7 @@
       <% tickets.forEach(function(t) { %>
         <div class="card">
           <div class="card-header">
-            <strong><%= t.subject %></strong>
+            <a href="/tickets/<%= t.id %>"><strong>#<%= t.id %> <%= t.subject %></strong></a>
             <span>
               <span class="priority priority-<%= t.priority %>"><%= t.priority %></span>
               <span class="tag"><%= t.category %></span>

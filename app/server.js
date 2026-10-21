@@ -170,21 +170,82 @@ app.post('/tickets', wrap(async (req, res) => {
   res.redirect('/tickets');
 }));
 
+// Returns the ticket if this user may see it. Customers get a 404 (not a 403)
+// for other people's tickets so ticket ids can't be probed.
+async function loadTicket(req, res) {
+  const [rows] = await pool.query(
+    `SELECT t.*, a.name AS assignee_name FROM tickets t LEFT JOIN users a ON a.sub = t.assignee_sub WHERE t.id = ?`,
+    [req.params.id]);
+  const ticket = rows[0];
+  if (!ticket || (!isStaff(req.user) && ticket.created_by !== req.user.sub)) {
+    res.status(404).render('error', { title: 'Not found', message: 'That ticket does not exist.' });
+    return null;
+  }
+  return ticket;
+}
+
+const logChange = (ticketId, user, field, from, to) => pool.query(
+  'INSERT INTO ticket_history (ticket_id, actor_sub, actor_name, field, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?)',
+  [ticketId, user.sub, user.name, field, from, to]);
+
+// Forms on the detail page send back=detail so staff land where they were.
+const backTo = (req, id) => (req.body.back === 'detail' ? `/tickets/${id}` : '/tickets');
+
+app.get('/tickets/:id', wrap(async (req, res) => {
+  const ticket = await loadTicket(req, res);
+  if (!ticket) return;
+  const [comments] = await pool.query('SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY created_at, id', [ticket.id]);
+  const [history] = await pool.query('SELECT * FROM ticket_history WHERE ticket_id = ? ORDER BY created_at, id', [ticket.id]);
+  // Nest replies under their parent comment.
+  const byId = new Map(comments.map((c) => [c.id, { ...c, replies: [] }]));
+  const thread = [];
+  for (const c of byId.values()) (byId.get(c.parent_id) ? byId.get(c.parent_id).replies : thread).push(c);
+  res.render('ticket', { ticket, thread, commentCount: comments.length, history, staff: isStaff(req.user) ? await getStaff() : [] });
+}));
+
+app.post('/tickets/:id/comments', wrap(async (req, res) => {
+  const ticket = await loadTicket(req, res);
+  if (!ticket) return;
+  const body = (req.body.body || '').trim();
+  if (body) {
+    let parentId = null;
+    if (req.body.parent_id) {
+      const [p] = await pool.query('SELECT id FROM ticket_comments WHERE id = ? AND ticket_id = ?', [req.body.parent_id, ticket.id]);
+      parentId = p.length ? p[0].id : null;
+    }
+    await pool.query(
+      'INSERT INTO ticket_comments (ticket_id, parent_id, author_sub, author_name, body) VALUES (?, ?, ?, ?, ?)',
+      [ticket.id, parentId, req.user.sub, req.user.name, body]);
+  }
+  res.redirect(`/tickets/${ticket.id}#comments`);
+}));
+
 app.post('/tickets/:id/status', staffOnly, wrap(async (req, res) => {
-  const { status } = req.body;
-  if (!['open', 'in_progress', 'closed'].includes(status)) return res.redirect('/tickets');
-  await pool.query('UPDATE tickets SET status = ? WHERE id = ?', [status, req.params.id]);
-  res.redirect('/tickets');
+  const status = pick(req.body.status, STATUSES);
+  const [rows] = await pool.query('SELECT status FROM tickets WHERE id = ?', [req.params.id]);
+  if (status && rows.length && rows[0].status !== status) {
+    // closed_at powers the "average time to close" metric; reopening clears it.
+    await pool.query("UPDATE tickets SET status = ?, closed_at = IF(? = 'closed', NOW(), NULL) WHERE id = ?", [status, status, req.params.id]);
+    await logChange(req.params.id, req.user, 'status', rows[0].status, status);
+  }
+  res.redirect(backTo(req, req.params.id));
 }));
 
 app.post('/tickets/:id/assign', staffOnly, wrap(async (req, res) => {
   const assignee = req.body.assignee || null;
+  let newName = null;
   if (assignee) {
-    const [rows] = await pool.query("SELECT sub FROM users WHERE sub = ? AND role IN ('agent', 'admin')", [assignee]);
+    const [rows] = await pool.query("SELECT name FROM users WHERE sub = ? AND role IN ('agent', 'admin')", [assignee]);
     if (!rows.length) return res.status(400).render('error', { title: 'Invalid assignee', message: 'Tickets can only be assigned to agents or admins.' });
+    newName = rows[0].name;
   }
-  await pool.query('UPDATE tickets SET assignee_sub = ? WHERE id = ?', [assignee, req.params.id]);
-  res.redirect('/tickets');
+  const [cur] = await pool.query('SELECT a.name FROM tickets t LEFT JOIN users a ON a.sub = t.assignee_sub WHERE t.id = ?', [req.params.id]);
+  if (!cur.length) return res.redirect('/tickets');
+  if ((cur[0].name || null) !== newName) {
+    await pool.query('UPDATE tickets SET assignee_sub = ? WHERE id = ?', [assignee, req.params.id]);
+    await logChange(req.params.id, req.user, 'assignee', cur[0].name || null, newName);
+  }
+  res.redirect(backTo(req, req.params.id));
 }));
 
 app.post('/tickets/:id/delete', adminOnly, wrap(async (req, res) => {

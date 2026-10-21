@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>#<%= ticket.id %> <%= ticket.subject %> - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <a href="/tickets">&larr; Back to tickets</a>
+    <div class="card detail">
+      <div class="card-header">
+        <h1>#<%= ticket.id %> <%= ticket.subject %></h1>
+        <span>
+          <span class="priority priority-<%= ticket.priority %>"><%= ticket.priority %></span>
+          <span class="tag"><%= ticket.category %></span>
+          <span class="status status-<%= ticket.status %>"><%= ticket.status.replace('_', ' ') %></span>
+        </span>
+      </div>
+      <p class="muted">From <%= ticket.requester %> &middot; opened <%= new Date(ticket.created_at).toLocaleString() %> &middot; <%= ticket.assignee_name ? 'Assigned to ' + ticket.assignee_name : 'Unassigned' %><% if (ticket.closed_at) { %> &middot; closed <%= new Date(ticket.closed_at).toLocaleString() %><% } %></p>
+      <div class="article-body"><%= ticket.description %></div>
+
+      <% if (user.role !== 'customer') { %>
+        <div class="card-actions">
+          <form action="/tickets/<%= ticket.id %>/status" method="POST">
+            <input type="hidden" name="back" value="detail">
+            <select name="status" onchange="this.form.submit()">
+              <% ['open', 'in_progress', 'closed'].forEach(function(s) { %>
+                <option value="<%= s %>" <%= ticket.status === s ? 'selected' : '' %>><%= s.replace('_', ' ') %></option>
+              <% }) %>
+            </select>
+          </form>
+          <form action="/tickets/<%= ticket.id %>/assign" method="POST">
+            <input type="hidden" name="back" value="detail">
+            <select name="assignee" onchange="this.form.submit()">
+              <option value="">Unassigned</option>
+              <% staff.forEach(function(s) { %>
+                <option value="<%= s.sub %>" <%= ticket.assignee_sub === s.sub ? 'selected' : '' %>><%= s.name %></option>
+              <% }) %>
+            </select>
+          </form>
+        </div>
+      <% } %>
+    </div>
+
+    <h2 id="comments">Comments (<%= commentCount %>)</h2>
+    <% if (!thread.length) { %><p class="muted">No comments yet.</p><% } %>
+    <% thread.forEach(function(c) { %>
+      <%- include('comment', { comment: c, ticketId: ticket.id }) %>
+    <% }) %>
+    <form action="/tickets/<%= ticket.id %>/comments" method="POST" class="card-form">
+      <textarea name="body" placeholder="Add a comment" required></textarea>
+      <button type="submit">Comment</button>
+    </form>
+
+    <h2>History</h2>
+    <ul class="history">
+      <li><span class="muted"><%= new Date(ticket.created_at).toLocaleString() %></span> Ticket opened by <%= ticket.requester %></li>
+      <% history.forEach(function(h) { %>
+        <li>
+          <span class="muted"><%= new Date(h.created_at).toLocaleString() %></span>
+          <%= h.actor_name %> changed <strong><%= h.field %></strong>
+          from <em><%= h.old_value || 'none' %></em> to <em><%= h.new_value || 'none' %></em>
+        </li>
+      <% }) %>
+    </ul>
+  </div>
+</body>
+</html>

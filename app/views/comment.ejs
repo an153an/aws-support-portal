@@ -1,0 +1,22 @@
+<div class="comment">
+  <div class="comment-head">
+    <strong><%= comment.author_name %></strong>
+    <span class="muted"><%= new Date(comment.created_at).toLocaleString() %></span>
+  </div>
+  <div class="comment-body"><%= comment.body %></div>
+  <details class="reply">
+    <summary>Reply</summary>
+    <form action="/tickets/<%= ticketId %>/comments" method="POST" class="card-form">
+      <input type="hidden" name="parent_id" value="<%= comment.id %>">
+      <textarea name="body" placeholder="Write a reply" required></textarea>
+      <button type="submit">Post reply</button>
+    </form>
+  </details>
+  <% if (comment.replies.length) { %>
+    <div class="replies">
+      <% comment.replies.forEach(function(r) { %>
+        <%- include('comment', { comment: r, ticketId: ticketId }) %>
+      <% }) %>
+    </div>
+  <% } %>
+</div>

@@ -180,6 +180,8 @@ Search: `/tickets` filters by keyword (subject/description), status and — for 
 
 Tickets carry a **priority** (`low`/`medium`/`high`/`urgent`, default `medium`) and a **category** (`general`, `account`, `billing`, `bug`, `feature request`, `other`), chosen on the new-ticket form and filterable in search.
 
+Each ticket has a detail page (`/tickets/:id`) with **threaded comments** (reply to any comment) and a **history** timeline recording every status and assignee change, who made it, and when. Closing a ticket stamps `closed_at` (reopening clears it). Customers can only open and comment on their own tickets; other people's ids return 404.
+
 Pages: `/login`, `/register`, and a **Sign out** button in the nav. Every other route requires sign-in (unauthenticated requests are redirected to `/login?next=…`), and customers only see tickets they created.
 
 Sessions are a signed, HTTP-only, `SameSite=Lax` cookie (8 hours). The cookie is only marked `Secure` when `COOKIE_SECURE=true`, because the ALB currently serves plain HTTP — add an ACM certificate + HTTPS listener before using real passwords, then set that variable.
