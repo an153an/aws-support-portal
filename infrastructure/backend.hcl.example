@@ -1,0 +1,7 @@
+# Copy to backend.hcl (git-ignored) and fill in the values printed by
+# `terraform apply` in infrastructure/bootstrap.
+bucket         = "support-portal-tfstate-<account-id>"
+key            = "support-portal/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "support-portal-tflock"
+encrypt        = true

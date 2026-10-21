@@ -75,3 +75,9 @@ variable "db_multi_az" {
   type        = bool
   default     = true
 }
+
+variable "image_tag" {
+  description = "Tag of the app image in ECR to run. The CI pipeline passes the git commit SHA; \"latest\" is for manual deploys."
+  type        = string
+  default     = "latest"
+}

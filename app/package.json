@@ -4,7 +4,8 @@
   "description": "Simple support portal (tickets + knowledge base) deployed on AWS (EC2 + RDS)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/smoke.js"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1155.0",

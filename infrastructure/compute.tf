@@ -38,10 +38,14 @@ resource "aws_ecs_task_definition" "app" {
     operating_system_family = "LINUX"
   }
 
+  # The container pulls style.css from S3 at startup, so the object must be
+  # updated before any task using this definition starts.
+  depends_on = [aws_s3_object.style_css]
+
   container_definitions = jsonencode([
     {
       name      = "app"
-      image     = "${aws_ecr_repository.app.repository_url}:latest"
+      image     = "${aws_ecr_repository.app.repository_url}:${var.image_tag}"
       essential = true
 
       portMappings = [
@@ -88,6 +92,13 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.min_tasks # initial size only; autoscaling owns it afterwards
   launch_type     = "FARGATE"
+
+  # A rollout whose tasks keep failing (bad image, failing health check) is
+  # stopped and rolled back to the last working task definition automatically.
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   network_configuration {
     subnets          = aws_subnet.private[*].id

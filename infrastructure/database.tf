@@ -26,5 +26,12 @@ resource "aws_db_instance" "main" {
   skip_final_snapshot    = true
   multi_az               = var.db_multi_az
 
+  # snapshot_identifier only matters when the instance is first created.
+  # Ignoring it means a pipeline run that doesn't know the snapshot name can
+  # never plan to replace (and so wipe) an existing database.
+  lifecycle {
+    ignore_changes = [snapshot_identifier]
+  }
+
   tags = { Name = "${var.project_name}-db" }
 }
