@@ -121,7 +121,45 @@ app.use(wrap(async (req, res, next) => {
 const getStaff = async () => (await pool.query(
   "SELECT sub, name, role FROM users WHERE role IN ('agent', 'admin') ORDER BY name"))[0];
 
-app.get('/', (req, res) => res.redirect('/tickets'));
+app.get('/', (req, res) => res.redirect(isStaff(req.user) ? '/dashboard' : '/tickets'));
+
+// ---- Dashboard (staff) ----
+// "12m", "3h 5m", "2d 4h" — for the average-time-to-close figure.
+function formatMinutes(mins) {
+  if (mins == null) return '—';
+  const m = Math.round(mins);
+  if (m < 60) return `${m}m`;
+  if (m < 1440) return `${Math.floor(m / 60)}h ${m % 60}m`;
+  return `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`;
+}
+
+app.get('/dashboard', staffOnly, wrap(async (req, res) => {
+  const [[byStatus], [openByPriority], [[stats]]] = await Promise.all([
+    pool.query('SELECT status, COUNT(*) AS n FROM tickets GROUP BY status'),
+    pool.query("SELECT priority, COUNT(*) AS n FROM tickets WHERE status <> 'closed' GROUP BY priority"),
+    pool.query(`SELECT
+      COUNT(*) AS total,
+      SUM(status <> 'closed' AND assignee_sub IS NULL) AS unassigned_open,
+      SUM(status <> 'closed' AND assignee_sub = ?) AS mine_open,
+      SUM(created_at >= NOW() - INTERVAL 7 DAY) AS opened_7d,
+      SUM(closed_at >= NOW() - INTERVAL 7 DAY) AS closed_7d,
+      AVG(CASE WHEN status = 'closed' AND closed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, closed_at) END) AS avg_close_min,
+      SUM(status = 'closed' AND closed_at IS NOT NULL) AS closed_measured
+      FROM tickets`, [req.user.sub]),
+  ]);
+  const count = (rows, key, value) => Number((rows.find((r) => r[key] === value) || {}).n || 0);
+  res.render('dashboard', {
+    total: Number(stats.total),
+    status: Object.fromEntries(STATUSES.map((s) => [s, count(byStatus, 'status', s)])),
+    priority: Object.fromEntries(PRIORITIES.map((p) => [p, count(openByPriority, 'priority', p)])),
+    unassignedOpen: Number(stats.unassigned_open || 0),
+    mineOpen: Number(stats.mine_open || 0),
+    opened7d: Number(stats.opened_7d || 0),
+    closed7d: Number(stats.closed_7d || 0),
+    avgClose: formatMinutes(stats.avg_close_min == null ? null : Number(stats.avg_close_min)),
+    closedMeasured: Number(stats.closed_measured || 0),
+  });
+}));
 
 // ---- Search helpers ----
 // Escapes % and _ so user input is matched literally inside LIKE.

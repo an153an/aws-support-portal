@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container wide">
+    <h1>Dashboard</h1>
+
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-n"><%= status.open %></div><div class="muted">Open</div></div>
+      <div class="stat"><div class="stat-n"><%= status.in_progress %></div><div class="muted">In progress</div></div>
+      <div class="stat"><div class="stat-n"><%= status.closed %></div><div class="muted">Closed</div></div>
+      <div class="stat"><div class="stat-n"><%= avgClose %></div><div class="muted">Avg time to close<% if (closedMeasured) { %> (<%= closedMeasured %> tickets)<% } %></div></div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-n"><%= unassignedOpen %></div><div class="muted"><a href="/tickets">Unassigned &amp; open</a></div></div>
+      <div class="stat"><div class="stat-n"><%= mineOpen %></div><div class="muted">Open &amp; assigned to me</div></div>
+      <div class="stat"><div class="stat-n"><%= opened7d %></div><div class="muted">Opened, last 7 days</div></div>
+      <div class="stat"><div class="stat-n"><%= closed7d %></div><div class="muted">Closed, last 7 days</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>Tickets by status</h2>
+        <% ['open', 'in_progress', 'closed'].forEach(function(s) { %>
+          <div class="bar-row">
+            <span class="bar-label"><a href="/tickets?status=<%= s %>"><%= s.replace('_', ' ') %></a></span>
+            <span class="bar"><span class="bar-fill status-<%= s %>" style="width: <%= total ? Math.round(status[s] * 100 / total) : 0 %>%"></span></span>
+            <span class="bar-n"><%= status[s] %></span>
+          </div>
+        <% }) %>
+      </div>
+      <div class="card">
+        <h2>Open tickets by priority</h2>
+        <% var openTotal = status.open + status.in_progress; %>
+        <% ['urgent', 'high', 'medium', 'low'].forEach(function(p) { %>
+          <div class="bar-row">
+            <span class="bar-label"><a href="/tickets?priority=<%= p %>"><%= p %></a></span>
+            <span class="bar"><span class="bar-fill priority-<%= p %>" style="width: <%= openTotal ? Math.round(priority[p] * 100 / openTotal) : 0 %>%"></span></span>
+            <span class="bar-n"><%= priority[p] %></span>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
