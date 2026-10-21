@@ -22,9 +22,13 @@ variable "project_name" {
   default = "support-portal"
 }
 
-variable "github_repo" {
-  description = "GitHub repository allowed to deploy, as owner/name"
-  default     = "an153an/aws-support-portal"
+variable "github_subject_prefixes" {
+  description = "How GitHub names this repo in the OIDC token's sub claim. Newer repos use immutable IDs (owner@id/repo@id); older ones use owner/repo. Both are trusted by default. Check yours with: gh api repos/<owner>/<repo>/actions/oidc/customization/sub"
+  type        = list(string)
+  default = [
+    "repo:an153an/aws-support-portal",
+    "repo:an153an@33672601/aws-support-portal@1389739782",
+  ]
 }
 
 variable "create_oidc_provider" {
@@ -114,10 +118,12 @@ resource "aws_iam_role" "deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # A job that declares `environment: production` is identified to AWS by the
           # environment, not the branch, so both identities must be trusted.
-          "token.actions.githubusercontent.com:sub" = [
-            "repo:${var.github_repo}:ref:refs/heads/main",
-            "repo:${var.github_repo}:environment:production",
-          ]
+          "token.actions.githubusercontent.com:sub" = flatten([
+            for prefix in var.github_subject_prefixes : [
+              "${prefix}:ref:refs/heads/main",
+              "${prefix}:environment:production",
+            ]
+          ])
         }
       }
     }]
@@ -145,7 +151,7 @@ resource "aws_iam_role" "plan" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:pull_request"
+          "token.actions.githubusercontent.com:sub" = [for prefix in var.github_subject_prefixes : "${prefix}:pull_request"]
         }
       }
     }]

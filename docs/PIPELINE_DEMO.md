@@ -131,7 +131,7 @@ cd bootstrap && terraform destroy
 
 | Symptom | Likely cause |
 |---|---|
-| `Error: Not authorized to perform sts:AssumeRoleWithWebIdentity` | The run isn't on `main` / in the `production` environment (deploy role) or a same-repo PR (plan role), the bootstrap wasn't re-applied after a trust change, or `AWS_DEPLOY_ROLE_ARN` is wrong. The role trust is pinned to `repo:an153an/aws-support-portal`; if you forked, re-apply the bootstrap with `-var github_repo=<owner>/<name>`. |
+| `Error: Not authorized to perform sts:AssumeRoleWithWebIdentity` | The run isn't on `main` / in the `production` environment (deploy role) or a same-repo PR (plan role), the bootstrap wasn't re-applied after a trust change, or `AWS_DEPLOY_ROLE_ARN` is wrong. Newer GitHub repos send *immutable* subject claims (`repo:owner@id/name@id:…`), so the trust lists both forms in `github_subject_prefixes`; check yours with `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`. If you forked, re-apply the bootstrap with your own `github_subject_prefixes`. |
 | `Backend configuration changed` locally | Run `terraform init -backend-config=backend.hcl`. |
 | Tasks crash-loop with `exec format error` | An arm64 image got deployed; the pipeline pins `linux/amd64`, but a manual `docker build` on an Apple Silicon Mac does not (see the README). |
 | Deploy waits then fails at "wait for ECS" | The new tasks are unhealthy — check the `/ecs/support-portal-app` log group (logs are JSON; filter `level = "error"`). The circuit breaker will already have rolled back. |
