@@ -51,4 +51,12 @@ module.exports = [
       `ALTER TABLE tickets ADD INDEX idx_tickets_assignee (assignee_sub)`,
     ],
   },
+  {
+    id: 4,
+    name: 'ticket priority and category',
+    sql: [
+      `ALTER TABLE tickets ADD COLUMN priority VARCHAR(20) NOT NULL DEFAULT 'medium'`,
+      `ALTER TABLE tickets ADD COLUMN category VARCHAR(100) NOT NULL DEFAULT 'general'`,
+    ],
+  },
 ];

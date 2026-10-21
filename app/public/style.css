@@ -41,3 +41,10 @@ form .link-button:hover { background: none; color: #fff; }
 .filter-bar input { flex: 1; min-width: 140px; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; }
 .filter-bar button { background: #2563eb; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 6px; }
 form.filter-bar button:hover { background: #1d4ed8; }
+.row { display: flex; gap: 1rem; }
+.row label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; }
+.priority { padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
+.priority-low { background: #e5e7eb; color: #374151; }
+.priority-medium { background: #dbeafe; color: #1e40af; }
+.priority-high { background: #ffedd5; color: #9a3412; }
+.priority-urgent { background: #dc2626; color: #fff; }

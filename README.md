@@ -178,6 +178,8 @@ Admins manage roles on **Users** (`/admin/users`); the change takes effect on th
 
 Search: `/tickets` filters by keyword (subject/description), status and — for staff — requester; `/kb` searches title, body and category and filters by category. All filters are query-string parameters, so searches are linkable.
 
+Tickets carry a **priority** (`low`/`medium`/`high`/`urgent`, default `medium`) and a **category** (`general`, `account`, `billing`, `bug`, `feature request`, `other`), chosen on the new-ticket form and filterable in search.
+
 Pages: `/login`, `/register`, and a **Sign out** button in the nav. Every other route requires sign-in (unauthenticated requests are redirected to `/login?next=…`), and customers only see tickets they created.
 
 Sessions are a signed, HTTP-only, `SameSite=Lax` cookie (8 hours). The cookie is only marked `Secure` when `COOKIE_SECURE=true`, because the ALB currently serves plain HTTP — add an ACM certificate + HTTPS listener before using real passwords, then set that variable.

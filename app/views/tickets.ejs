@@ -13,6 +13,18 @@
     <form action="/tickets" method="POST" class="card-form">
       <input type="text" name="subject" placeholder="Subject" required>
       <textarea name="description" placeholder="Describe the issue" required></textarea>
+      <div class="row">
+        <label>Priority
+          <select name="priority">
+            <% PRIORITIES.forEach(function(p) { %><option value="<%= p %>" <%= p === 'medium' ? 'selected' : '' %>><%= p %></option><% }) %>
+          </select>
+        </label>
+        <label>Category
+          <select name="category">
+            <% CATEGORIES.forEach(function(c) { %><option value="<%= c %>"><%= c %></option><% }) %>
+          </select>
+        </label>
+      </div>
       <button type="submit">Submit Ticket</button>
     </form>
 
@@ -27,6 +39,14 @@
           <option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= s.replace('_', ' ') %></option>
         <% }) %>
       </select>
+      <select name="priority">
+        <option value="">All priorities</option>
+        <% PRIORITIES.forEach(function(p) { %><option value="<%= p %>" <%= filters.priority === p ? 'selected' : '' %>><%= p %></option><% }) %>
+      </select>
+      <select name="category">
+        <option value="">All categories</option>
+        <% CATEGORIES.forEach(function(c) { %><option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option><% }) %>
+      </select>
       <button type="submit">Search</button>
       <a href="/tickets">Clear</a>
     </form>
@@ -37,7 +57,11 @@
         <div class="card">
           <div class="card-header">
             <strong><%= t.subject %></strong>
-            <span class="status status-<%= t.status %>"><%= t.status %></span>
+            <span>
+              <span class="priority priority-<%= t.priority %>"><%= t.priority %></span>
+              <span class="tag"><%= t.category %></span>
+              <span class="status status-<%= t.status %>"><%= t.status.replace('_', ' ') %></span>
+            </span>
           </div>
           <p class="muted">From <%= t.requester %> &middot; <%= new Date(t.created_at).toLocaleString() %> &middot; <%= t.assignee_name ? 'Assigned to ' + t.assignee_name : 'Unassigned' %></p>
           <p><%= t.description %></p>

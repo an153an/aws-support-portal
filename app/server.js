@@ -127,20 +127,29 @@ app.get('/', (req, res) => res.redirect('/tickets'));
 // Escapes % and _ so user input is matched literally inside LIKE.
 const like = (v) => `%${String(v).replace(/[\\%_]/g, '\\$&')}%`;
 const STATUSES = ['open', 'in_progress', 'closed'];
+const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+const CATEGORIES = ['general', 'account', 'billing', 'bug', 'feature request', 'other'];
+const pick = (value, allowed, fallback = '') => (allowed.includes(value) ? value : fallback);
+app.locals.PRIORITIES = PRIORITIES;
+app.locals.CATEGORIES = CATEGORIES;
 
 // Builds the WHERE clause for the ticket list from the query string.
 // Customers are always restricted to their own tickets, whatever they ask for.
 function ticketFilters(req) {
   const q = (req.query.q || '').trim();
   const requester = isStaff(req.user) ? (req.query.requester || '').trim() : '';
-  const status = STATUSES.includes(req.query.status) ? req.query.status : '';
+  const status = pick(req.query.status, STATUSES);
+  const priority = pick(req.query.priority, PRIORITIES);
+  const category = pick(req.query.category, CATEGORIES);
   const where = [];
   const params = [];
   if (!isStaff(req.user)) { where.push('t.created_by = ?'); params.push(req.user.sub); }
   if (q) { where.push('(t.subject LIKE ? OR t.description LIKE ?)'); params.push(like(q), like(q)); }
   if (requester) { where.push('t.requester LIKE ?'); params.push(like(requester)); }
   if (status) { where.push('t.status = ?'); params.push(status); }
-  return { where: where.length ? `WHERE ${where.join(' AND ')}` : '', params, filters: { q, requester, status } };
+  if (priority) { where.push('t.priority = ?'); params.push(priority); }
+  if (category) { where.push('t.category = ?'); params.push(category); }
+  return { where: where.length ? `WHERE ${where.join(' AND ')}` : '', params, filters: { q, requester, status, priority, category } };
 }
 
 // ---- Tickets ----
@@ -155,8 +164,8 @@ app.get('/tickets', wrap(async (req, res) => {
 app.post('/tickets', wrap(async (req, res) => {
   const { subject, description } = req.body;
   await pool.query(
-    'INSERT INTO tickets (subject, requester, description, created_by) VALUES (?, ?, ?, ?)',
-    [subject, req.user.name, description, req.user.sub]
+    'INSERT INTO tickets (subject, requester, description, created_by, priority, category) VALUES (?, ?, ?, ?, ?, ?)',
+    [subject, req.user.name, description, req.user.sub, pick(req.body.priority, PRIORITIES, 'medium'), pick(req.body.category, CATEGORIES, 'general')]
   );
   res.redirect('/tickets');
 }));
