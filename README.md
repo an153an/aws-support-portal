@@ -156,7 +156,7 @@ To see it work, generate load against the ALB (for example `hey -z 3m -c 50 http
 
 ### `database.tf`
 - `aws_db_subnet_group.main` — built from `aws_subnet.private[*].id`, which is what forces RDS to live only in the private subnets (RDS subnet groups require ≥2 subnets in ≥2 AZs).
-- `aws_db_instance.main` — `engine = "mysql"` `8.0`, `instance_class = var.db_instance_class` (`db.t3.micro`), `allocated_storage = 20` (GB, gp2 by default), `storage_encrypted = true`, `publicly_accessible = false`, `multi_az = false` (single-AZ to keep cost down for a class project — flip this to `true` for real HA), `skip_final_snapshot = true` (so `terraform destroy` doesn't hang waiting for a manual snapshot name — fine for a demo, you'd remove this in production).
+- `aws_db_instance.main` — `engine = "mysql"` `8.0`, `instance_class = var.db_instance_class` (`db.t3.micro`), `allocated_storage = 20` (GB, gp2 by default), `storage_encrypted = true`, `publicly_accessible = false`, `multi_az = var.db_multi_az` (default **true**: RDS keeps a synchronous standby in the second AZ and fails over automatically in ~1–2 minutes if the primary or its AZ fails. It roughly doubles the instance cost — set `db_multi_az = false` in `terraform.tfvars` for a cheap demo), `skip_final_snapshot = true` (so `terraform destroy` doesn't hang waiting for a manual snapshot name — fine for a demo, you'd remove this in production).
 
 ### `compute.tf`
 - `aws_ecr_repository.app` — a private container registry for the app's Docker image, with `scan_on_push = true` (Amazon ECR scans each pushed image for known OS/package vulnerabilities).
@@ -289,7 +289,7 @@ This provisions:
 - An Internet Gateway + NAT Gateway
 - An Application Load Balancer + ECS Fargate service running the containerized app
 - An ECR repository holding the app's container image
-- An RDS MySQL instance in the private subnets
+- A Multi-AZ RDS MySQL instance in the private subnets (standby in the second AZ)
 - An encrypted, private S3 bucket (with the app's static asset pre-uploaded, fetched by the container at runtime)
 - Security groups restricting traffic tier-to-tier, and separate ECS execution/task IAM roles scoped to exactly what each needs
 

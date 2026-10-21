@@ -69,3 +69,9 @@ variable "requests_per_task_target" {
   type        = number
   default     = 200
 }
+
+variable "db_multi_az" {
+  description = "Run a synchronous standby replica in a second AZ with automatic failover. Roughly doubles the RDS instance cost; set to false for a cheap demo."
+  type        = bool
+  default     = true
+}

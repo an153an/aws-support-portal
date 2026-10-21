@@ -24,7 +24,7 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.db.id]
   publicly_accessible    = false
   skip_final_snapshot    = true
-  multi_az               = false
+  multi_az               = var.db_multi_az
 
   tags = { Name = "${var.project_name}-db" }
 }
