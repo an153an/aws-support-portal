@@ -1,5 +1,6 @@
 const mysql = require('mysql2/promise');
 const migrations = require('./migrations');
+const logger = require('./logger');
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -25,7 +26,7 @@ async function migrate() {
     for (const m of migrations.filter((x) => !applied.has(x.id))) {
       for (const statement of m.sql) await conn.query(statement);
       await conn.query('INSERT INTO schema_migrations (id, name) VALUES (?, ?)', [m.id, m.name]);
-      console.log(`Applied migration ${m.id}: ${m.name}`);
+      logger.info('Applied migration', { id: m.id, name: m.name });
     }
   } finally {
     await conn.query("SELECT RELEASE_LOCK('support_portal_migrate')").catch(() => {});

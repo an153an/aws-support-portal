@@ -9,6 +9,7 @@ const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const multer = require('multer');
 const auth = require('./auth');
 const storage = require('./storage');
+const logger = require('./logger');
 const { pool, migrate } = require('./db');
 
 const app = express();
@@ -21,7 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Behind the ALB the client's connection is HTTP; trust X-Forwarded-* from it.
 app.set('trust proxy', 1);
-if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; using a random key (sessions reset on restart).');
+if (!process.env.SESSION_SECRET) logger.warn('SESSION_SECRET is not set; using a random key (sessions reset on restart).');
 app.use(cookieSession({
   name: 'sp_session',
   keys: [process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')],
@@ -31,6 +32,7 @@ app.use(cookieSession({
   secure: process.env.COOKIE_SECURE === 'true', // set once the ALB serves HTTPS
 }));
 app.use(auth.attachUser);
+app.use(logger.requestLogger);
 
 // Express 4 does not catch rejected promises from async handlers; without this
 // a failed query would crash the process.
@@ -425,7 +427,7 @@ app.post('/tickets/:id/assign', staffOnly, wrap(async (req, res) => {
 app.post('/tickets/:id/delete', adminOnly, wrap(async (req, res) => {
   // The rows cascade, but the S3 objects don't — remove them first (best effort).
   const [files] = await pool.query('SELECT s3_key FROM ticket_attachments WHERE ticket_id = ?', [req.params.id]);
-  await Promise.all(files.map((f) => storage.remove(f.s3_key).catch((err) => console.error('Could not delete attachment', f.s3_key, err.message))));
+  await Promise.all(files.map((f) => storage.remove(f.s3_key).catch((err) => logger.warn('Could not delete attachment', { key: f.s3_key, error: err.message }))));
   await pool.query('DELETE FROM tickets WHERE id = ?', [req.params.id]);
   res.redirect('/tickets');
 }));
@@ -504,18 +506,18 @@ app.post('/admin/users/:sub/role', adminOnly, wrap(async (req, res) => {
 app.use((req, res) => res.status(404).render('error', { title: 'Not found', message: 'That page does not exist.' }));
 
 app.use((err, req, res, next) => {
-  console.error(err);
+  logger.error('Unhandled error', { req_id: req.id, method: req.method, path: req.path, ...logger.errorFields(err) });
   if (res.headersSent) return next(err);
   res.status(500).render('error', { title: 'Something went wrong', message: 'An unexpected error occurred. Please try again.' });
 });
 
 fetchStaticAsset()
-  .catch((err) => console.error('Could not fetch static asset from S3, using bundled copy:', err.message))
+  .catch((err) => logger.warn('Could not fetch static asset from S3, using bundled copy', { error: err.message }))
   .then(() => migrate())
   .then(() => {
-    app.listen(PORT, () => console.log(`Support portal running on port ${PORT}`));
+    app.listen(PORT, () => logger.info('Support portal listening', { port: Number(PORT) }));
   })
   .catch((err) => {
-    console.error('Failed to initialize database:', err);
+    logger.error('Failed to start', logger.errorFields(err));
     process.exit(1);
   });

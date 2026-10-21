@@ -45,3 +45,9 @@ variable "db_snapshot_identifier" {
   type        = string
   default     = null
 }
+
+variable "alert_email" {
+  description = "Email address to notify when a CloudWatch alarm fires. Leave empty to create the alarms without an email subscription."
+  type        = string
+  default     = ""
+}

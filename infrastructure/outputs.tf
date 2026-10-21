@@ -29,3 +29,8 @@ output "cognito_user_pool_id" {
 output "cognito_client_id" {
   value = aws_cognito_user_pool_client.app.id
 }
+
+output "cloudwatch_dashboard_url" {
+  description = "CloudWatch dashboard for the portal"
+  value       = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${aws_cloudwatch_dashboard.main.dashboard_name}"
+}
