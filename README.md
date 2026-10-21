@@ -48,6 +48,10 @@ The app is containerized and runs on **ECS Fargate** — no EC2 instances to pat
 
 ```
 app/              Node.js/Express web app (tickets + knowledge base)
+  server.js       routes
+  auth.js         Cognito sign-in/registration, roles, middleware
+  db.js           MySQL pool + migration runner
+  migrations.js   ordered schema migrations (run automatically at startup)
 infrastructure/   Terraform IaC for the full AWS architecture
 ```
 
@@ -169,6 +173,8 @@ Anyone can self-register on `/register`; they start as a `customer`. Create the 
 ```bash
 scripts/create-admin.sh you@example.com 'A-Str0ng-Passw0rd' "Your Name"
 ```
+
+Pages: `/login`, `/register`, and a **Sign out** button in the nav. Every other route requires sign-in (unauthenticated requests are redirected to `/login?next=…`), and customers only see tickets they created.
 
 Sessions are a signed, HTTP-only, `SameSite=Lax` cookie (8 hours). The cookie is only marked `Secure` when `COOKIE_SECURE=true`, because the ALB currently serves plain HTTP — add an ACM certificate + HTTPS listener before using real passwords, then set that variable.
 

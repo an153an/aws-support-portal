@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-box">
+    <h1>Support Portal</h1>
+    <p class="muted">Sign in to raise and follow support tickets.</p>
+    <% if (error) { %><div class="alert"><%= error %></div><% } %>
+    <form action="/login" method="POST" class="card-form">
+      <input type="hidden" name="next" value="<%= next %>">
+      <label>Email <input type="email" name="email" value="<%= email %>" required autofocus></label>
+      <label>Password <input type="password" name="password" required></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p class="muted">New here? <a href="/register">Create an account</a></p>
+  </div>
+</body>
+</html>

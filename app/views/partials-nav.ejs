@@ -2,4 +2,10 @@
   <div class="brand">Support Portal</div>
   <a href="/tickets">Tickets</a>
   <a href="/kb">Knowledge Base</a>
+  <% if (locals.user) { %>
+    <div class="nav-user">
+      <span><%= user.name %> <span class="role role-<%= user.role %>"><%= user.role %></span></span>
+      <form action="/logout" method="POST"><button type="submit" class="link-button">Sign out</button></form>
+    </div>
+  <% } %>
 </nav>

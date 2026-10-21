@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-box">
+    <h1>Create an account</h1>
+    <% if (error) { %><div class="alert"><%= error %></div><% } %>
+    <form action="/register" method="POST" class="card-form">
+      <label>Name <input type="text" name="name" value="<%= name %>" required autofocus></label>
+      <label>Email <input type="email" name="email" value="<%= email %>" required></label>
+      <label>Password <input type="password" name="password" minlength="8" required></label>
+      <p class="muted">At least 8 characters with upper-case, lower-case and a number.</p>
+      <label>Confirm password <input type="password" name="confirm" minlength="8" required></label>
+      <button type="submit">Create account</button>
+    </form>
+    <p class="muted">Already registered? <a href="/login">Sign in</a></p>
+  </div>
+</body>
+</html>

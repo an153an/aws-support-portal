@@ -26,3 +26,13 @@ button { cursor: pointer; }
 form button { background: #ef4444; color: #fff; border: none; padding: 0.4rem 0.8rem; border-radius: 6px; }
 form button:hover { background: #dc2626; }
 select { padding: 0.4rem; border-radius: 6px; border: 1px solid #d1d5db; }
+.nav-user { margin-left: auto; display: flex; align-items: center; gap: 1rem; color: #cbd5e1; font-size: 0.9rem; }
+.nav-user form { margin: 0; }
+.role { background: #374151; color: #e5e7eb; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+.role-admin { background: #7c3aed; color: #fff; }
+.role-agent { background: #2563eb; color: #fff; }
+form .link-button, .link-button { background: none; border: none; color: #cbd5e1; padding: 0; text-decoration: underline; }
+form .link-button:hover { background: none; color: #fff; }
+.auth-box { max-width: 380px; margin: 4rem auto; padding: 0 1rem; }
+.auth-box label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; }
+.alert { background: #fee2e2; color: #991b1b; padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
