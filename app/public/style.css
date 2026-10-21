@@ -69,3 +69,4 @@ h2 { margin: 1.5rem 0 0.6rem; font-size: 1.1rem; }
 .bar { flex: 1; background: #e5e7eb; border-radius: 999px; height: 12px; overflow: hidden; }
 .bar-fill { display: block; height: 100%; border-radius: 999px; }
 .bar-n { width: 2rem; text-align: right; font-weight: 600; }
+.pager { display: flex; justify-content: space-between; align-items: center; margin: 1rem 0; }

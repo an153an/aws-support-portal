@@ -186,6 +186,8 @@ Tickets and articles are **editable**: staff can edit any ticket or article; a c
 
 Staff get a **Dashboard** (`/dashboard`, their landing page): ticket counts by status, open tickets by priority, unassigned/mine/last-7-days counts, and **average time to close** (`closed_at − created_at`; tickets closed before this feature existed have no `closed_at` and are excluded).
 
+Lists are **paginated** (10 per page) and **sortable** (`sort=newest|oldest|priority|status|subject` for tickets, `newest|oldest|title` for articles); search, sort and page combine in the URL. Sort keys are looked up in a whitelist, never put into SQL. Deleting a ticket or article shows a **confirmation prompt**.
+
 Pages: `/login`, `/register`, and a **Sign out** button in the nav. Every other route requires sign-in (unauthenticated requests are redirected to `/login?next=…`), and customers only see tickets they created.
 
 Sessions are a signed, HTTP-only, `SameSite=Lax` cookie (8 hours). The cookie is only marked `Secure` when `COOKIE_SECURE=true`, because the ALB currently serves plain HTTP — add an ACM certificate + HTTPS listener before using real passwords, then set that variable.

@@ -27,11 +27,15 @@
           <option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option>
         <% }) %>
       </select>
+      <select name="sort" title="Sort by">
+        <% sorts.forEach(function(s) { %><option value="<%= s %>" <%= sort === s ? 'selected' : '' %>>Sort: <%= s %></option><% }) %>
+      </select>
       <button type="submit">Search</button>
       <a href="/kb">Clear</a>
     </form>
 
     <% if (!articles.length) { %><p class="muted">No articles match.</p><% } %>
+    <%- include('pager') %>
     <div class="list">
       <% articles.forEach(function(a) { %>
         <div class="card">
@@ -43,7 +47,7 @@
           <div class="card-actions">
             <% if (user.role !== 'customer') { %><a href="/kb/<%= a.id %>/edit">Edit</a><% } %>
             <% if (user.role === 'admin') { %>
-              <form action="/kb/<%= a.id %>/delete" method="POST">
+              <form action="/kb/<%= a.id %>/delete" method="POST" onsubmit="return confirm('Delete this article? This cannot be undone.')">
                 <button type="submit">Delete</button>
               </form>
             <% } %>
@@ -51,6 +55,7 @@
         </div>
       <% }) %>
     </div>
+    <%- include('pager') %>
   </div>
 </body>
 </html>

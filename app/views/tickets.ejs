@@ -47,11 +47,15 @@
         <option value="">All categories</option>
         <% CATEGORIES.forEach(function(c) { %><option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option><% }) %>
       </select>
+      <select name="sort" title="Sort by">
+        <% sorts.forEach(function(s) { %><option value="<%= s %>" <%= sort === s ? 'selected' : '' %>>Sort: <%= s %></option><% }) %>
+      </select>
       <button type="submit">Search</button>
       <a href="/tickets">Clear</a>
     </form>
 
     <% if (!tickets.length) { %><p class="muted">No tickets match.</p><% } %>
+    <%- include('pager') %>
     <div class="list">
       <% tickets.forEach(function(t) { %>
         <div class="card">
@@ -85,7 +89,7 @@
               </form>
             <% } %>
             <% if (user.role === 'admin') { %>
-              <form action="/tickets/<%= t.id %>/delete" method="POST">
+              <form action="/tickets/<%= t.id %>/delete" method="POST" onsubmit="return confirm('Delete ticket #<%= t.id %>? This also deletes its comments and cannot be undone.')">
                 <button type="submit">Delete</button>
               </form>
             <% } %>
@@ -93,6 +97,7 @@
         </div>
       <% }) %>
     </div>
+    <%- include('pager') %>
   </div>
 </body>
 </html>

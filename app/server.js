@@ -161,6 +161,40 @@ app.get('/dashboard', staffOnly, wrap(async (req, res) => {
   });
 }));
 
+// ---- Pagination, sorting ----
+const PAGE_SIZE = 10;
+function paginate(req, total) {
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = Math.min(Math.max(parseInt(req.query.page, 10) || 1, 1), pages);
+  return { page, pages, total, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE };
+}
+
+// Whitelisted ORDER BY expressions: the sort key from the URL is only ever a
+// lookup key, never interpolated into SQL.
+const TICKET_SORTS = {
+  newest: 't.created_at DESC, t.id DESC',
+  oldest: 't.created_at ASC, t.id ASC',
+  priority: "FIELD(t.priority, 'urgent', 'high', 'medium', 'low'), t.created_at DESC",
+  status: "FIELD(t.status, 'open', 'in_progress', 'closed'), t.created_at DESC",
+  subject: 't.subject ASC, t.id ASC',
+};
+const ARTICLE_SORTS = {
+  newest: 'created_at DESC, id DESC',
+  oldest: 'created_at ASC, id ASC',
+  title: 'title ASC, id ASC',
+};
+
+// Lets views build links that keep the current search/sort: qs({ page: 2 }).
+app.use((req, res, next) => {
+  res.locals.qs = (overrides = {}) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ ...req.query, ...overrides })) if (v !== '' && v != null) p.set(k, v);
+    const str = p.toString();
+    return str ? `?${str}` : '';
+  };
+  next();
+});
+
 // ---- Search helpers ----
 // Escapes % and _ so user input is matched literally inside LIKE.
 const like = (v) => `%${String(v).replace(/[\\%_]/g, '\\$&')}%`;
@@ -193,10 +227,13 @@ function ticketFilters(req) {
 // ---- Tickets ----
 app.get('/tickets', wrap(async (req, res) => {
   const { where, params, filters } = ticketFilters(req);
+  const sort = pick(req.query.sort, Object.keys(TICKET_SORTS), 'newest');
+  const [[{ n }]] = await pool.query(`SELECT COUNT(*) AS n FROM tickets t ${where}`, params);
+  const pager = paginate(req, n);
   const [rows] = await pool.query(
     `SELECT t.*, a.name AS assignee_name FROM tickets t LEFT JOIN users a ON a.sub = t.assignee_sub
-     ${where} ORDER BY t.created_at DESC`, params);
-  res.render('tickets', { tickets: rows, filters, staff: isStaff(req.user) ? await getStaff() : [] });
+     ${where} ORDER BY ${TICKET_SORTS[sort]} LIMIT ? OFFSET ?`, [...params, pager.limit, pager.offset]);
+  res.render('tickets', { tickets: rows, filters, sort, sorts: Object.keys(TICKET_SORTS), pager, path: '/tickets', staff: isStaff(req.user) ? await getStaff() : [] });
 }));
 
 app.post('/tickets', wrap(async (req, res) => {
@@ -333,10 +370,14 @@ app.get('/kb', wrap(async (req, res) => {
   const params = [];
   if (q) { where.push('(title LIKE ? OR body LIKE ? OR category LIKE ?)'); params.push(like(q), like(q), like(q)); }
   if (category) { where.push('category = ?'); params.push(category); }
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const sort = pick(req.query.sort, Object.keys(ARTICLE_SORTS), 'newest');
+  const [[{ n }]] = await pool.query(`SELECT COUNT(*) AS n FROM articles ${clause}`, params);
+  const pager = paginate(req, n);
   const [rows] = await pool.query(
-    `SELECT * FROM articles ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`, params);
+    `SELECT * FROM articles ${clause} ORDER BY ${ARTICLE_SORTS[sort]} LIMIT ? OFFSET ?`, [...params, pager.limit, pager.offset]);
   const [cats] = await pool.query('SELECT DISTINCT category FROM articles ORDER BY category');
-  res.render('kb', { articles: rows, categories: cats.map((c) => c.category), filters: { q, category } });
+  res.render('kb', { articles: rows, categories: cats.map((c) => c.category), filters: { q, category }, sort, sorts: Object.keys(ARTICLE_SORTS), pager, path: '/kb' });
 }));
 
 app.get('/kb/:id', wrap(async (req, res) => {

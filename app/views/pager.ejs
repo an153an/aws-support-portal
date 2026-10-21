@@ -1,0 +1,9 @@
+<% if (pager.pages > 1) { %>
+  <nav class="pager">
+    <% if (pager.page > 1) { %><a href="<%= path %><%= qs({ page: pager.page - 1 }) %>">&laquo; Prev</a><% } else { %><span class="muted">&laquo; Prev</span><% } %>
+    <span>Page <%= pager.page %> of <%= pager.pages %> <span class="muted">(<%= pager.total %> total)</span></span>
+    <% if (pager.page < pager.pages) { %><a href="<%= path %><%= qs({ page: pager.page + 1 }) %>">Next &raquo;</a><% } else { %><span class="muted">Next &raquo;</span><% } %>
+  </nav>
+<% } else if (pager.total) { %>
+  <p class="muted"><%= pager.total %> total</p>
+<% } %>
