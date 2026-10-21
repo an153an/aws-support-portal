@@ -1,7 +1,7 @@
 {
   "name": "aws-support-portal",
   "version": "1.0.0",
-  "description": "Simple support portal (tickets + knowledge base) deployed on AWS (EC2 + RDS)",
+  "description": "Support portal (tickets, knowledge base, Cognito roles) running on AWS ECS Fargate with RDS MySQL, S3 and Cognito",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

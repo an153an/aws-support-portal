@@ -1,11 +1,13 @@
 # AWS Support Portal
 
-A simple support portal web app deployed on AWS, built for EMGT 308. It has two sections:
+A support portal web app deployed on AWS, built for EMGT 308.
 
-- **Tickets** — submit and track support tickets (open / in progress / closed)
-- **Knowledge Base** — publish and browse help articles
+- **Accounts and roles** — sign in / sign up through Amazon Cognito; `customer`, `agent` and `admin` roles
+- **Tickets** — priority and category, search and filter, sorting and pagination, edit, assignment to staff, threaded comments, a status/assignee history, and file attachments (S3, presigned downloads)
+- **Knowledge Base** — publish, edit and search help articles
+- **Dashboard** — ticket counts by status/priority and average time to close (staff)
 
-The project demonstrates a 3-tier architecture on AWS covering **compute, storage, networking, security, and database**.
+The project demonstrates a 3-tier architecture on AWS covering **compute, storage, networking, security, database, and operations** (monitoring, autoscaling, high availability, CI/CD). Each feature is described under "Users and roles" below.
 
 ## Architecture
 
@@ -33,22 +35,30 @@ The app is containerized and runs on **ECS Fargate** — no EC2 instances to pat
                     └────────────────┘
 
       ECR — stores the built container image
-      S3 bucket (encrypted, private) — static asset fetched by the container at startup
+      S3 bucket (encrypted, private) — static asset + ticket attachments (presigned URLs)
+      Cognito — user pool and role groups        Secrets Manager — DB credentials, session key
+      CloudWatch — JSON logs, dashboard, alarms (SNS)     Application Auto Scaling — 2 to 6 tasks
 ```
+
+The RDS instance is **Multi-AZ** (a synchronous standby in the second AZ). Deploys run from GitHub Actions (see "CI/CD pipeline").
 
 | Pillar | AWS Service | Purpose |
 |---|---|---|
-| Compute | ECS on Fargate | Runs the containerized Node.js app, no servers to manage |
-| Storage | S3, ECR | Static assets (`style.css`) + the app's container image |
+| Compute | ECS on Fargate, Application Auto Scaling | Runs the containerized Node.js app, no servers to manage; scales 2–6 tasks on CPU, memory and request count |
+| Storage | S3, ECR | Static assets (`style.css`), ticket attachments, and the app's container image |
 | Networking | VPC, public/private subnets, ALB, NAT Gateway | Routes traffic, isolates app/db tier |
-| Security | Security Groups, IAM roles (task + execution) | Least-privilege access between tiers |
-| Database | RDS (MySQL) | Stores tickets and KB articles |
+| Security | Security Groups, IAM roles (task + execution), Cognito, Secrets Manager | Least-privilege access between tiers, user accounts/roles, no secrets in code or tfvars |
+| Database | RDS (MySQL, Multi-AZ) | Stores tickets, comments, history, attachments metadata, KB articles and users |
+| Operations | CloudWatch (logs, dashboard, alarms), SNS, GitHub Actions | Monitoring and alerting, automated build and deploy |
 
 ## Repo structure
 
 ```
 app/              Node.js/Express web app (tickets + knowledge base)
   server.js       routes
+  logger.js       structured JSON logging + request log
+  storage.js      S3 attachment upload/delete/presigned URLs
+  test/smoke.js   CI smoke tests (`npm test`)
   auth.js         Cognito sign-in/registration, roles, middleware
   db.js           MySQL pool + migration runner
   migrations.js   ordered schema migrations (run automatically at startup)
@@ -171,7 +181,7 @@ Terraform state is stored remotely (S3 bucket with versioning + encryption, Dyna
 - `aws_cloudwatch_log_group.app` — where container stdout/stderr goes (7-day retention), since there's no instance to SSH into and `tail` a log file on.
 - `aws_ecs_task_definition.app` — the container-level equivalent of the old launch template: image URI (`<ecr-repo>:latest`), CPU/memory (`fargate_cpu`/`fargate_memory`), the container's port (3000), its environment variables (S3 bucket/key, region) and its `secrets` (DB connection info, injected from Secrets Manager at task start, never written to a file on disk), and which log group to ship output to. Also where `execution_role_arn` and `task_role_arn` are attached. `runtime_platform` explicitly pins `cpu_architecture = "X86_64"` — see "What actually broke" below for why this is spelled out rather than left to default.
 - `aws_ecs_service.app` — keeps the desired number of tasks (initially `min_tasks`; then managed by autoscaling) running on Fargate, in the private subnets, using the `app` security group (`network_configuration`), and registers each task into `aws_lb_target_group.app` (`load_balancer` block). If a task dies, ECS itself launches a replacement — the Fargate equivalent of what the Auto Scaling Group used to do.
-- `aws_lb.app` — internet-facing (`internal = false`) ALB in the two public subnets, using the `alb` security group. Unchanged from the EC2 version.
+- `aws_lb.app` — internet-facing (`internal = false`) ALB in the two public subnets, using the `alb` security group.
 - `aws_lb_target_group.app` — `target_type = "ip"` (not `"instance"`) since Fargate tasks are registered by their ENI's private IP, not an EC2 instance ID. Same health check as before: `GET /health` every 30s, 2 consecutive successes/failures to flip healthy/unhealthy.
 - `aws_lb_listener.http` — listens on port 80, forwards everything to the target group. Unchanged.
 
@@ -184,9 +194,9 @@ Terraform state is stored remotely (S3 bucket with versioning + encryption, Dyna
 
 1. `docker build` packages the app (`app/Dockerfile`) into a container image.
 2. The image is pushed to the ECR repository Terraform creates (`aws_ecr_repository.app`).
-3. Terraform provisions the VPC/subnets/gateways, the RDS instance, the S3 bucket + uploaded asset, the ECR repo, and the ECS cluster/task definition/service/ALB — in dependency order via Terraform's resource graph.
+3. Terraform provisions the VPC/subnets/gateways, the Multi-AZ RDS instance, Secrets Manager secrets, the Cognito pool and groups, the S3 bucket + uploaded asset, the ECR repo, the ECS cluster/task definition/service/ALB, autoscaling, and the CloudWatch dashboard/alarms — in dependency order via Terraform's resource graph.
 4. The ECS service launches Fargate tasks running the pushed image, each getting the RDS connection info from Secrets Manager and the S3 bucket/key as container environment variables (no boot script, no file written to disk).
-5. On container startup, `app/server.js` fetches `style.css` from the private S3 bucket using the task's IAM role, then connects to RDS and starts listening.
+5. On container startup, `app/server.js` fetches `style.css` from the private S3 bucket using the task's IAM role, connects to RDS, applies any pending schema migrations, and starts listening.
 6. The ALB health-checks each task on `/health` and only routes traffic to tasks that respond; ECS replaces any task that dies or fails checks.
 
 ## Logging
@@ -239,14 +249,17 @@ Sessions are a signed, HTTP-only, `SameSite=Lax` cookie (8 hours). The cookie is
 
 ## Running the app locally
 
+Needs Node 20+, a local MySQL 8, and AWS credentials (for Cognito and optionally S3).
+
 ```bash
 cd app
-cp .env.example .env   # fill in local/test DB credentials
+cp .env.example .env   # DB settings, SESSION_SECRET, and the Cognito pool/client ids
 npm install
-npm start
+npm start              # migrations run automatically at startup
+npm test               # fast smoke tests, no database or AWS needed
 ```
 
-Visit `http://localhost:3000`.
+Visit `http://localhost:3000`. Sign-in uses the real Cognito pool created by Terraform (`terraform output cognito_user_pool_id cognito_client_id`); create an admin with `scripts/create-admin.sh`. Leave `ASSETS_BUCKET` empty to disable attachments locally.
 
 ## Deploying the infrastructure
 
@@ -369,7 +382,9 @@ terraform destroy
 
 ## Tech stack
 
-- Node.js + Express + EJS (server-rendered views)
-- Docker (containerized app, run on ECS Fargate)
-- MySQL (via RDS)
-- Terraform for infrastructure as code
+- Node.js + Express + EJS (server-rendered views), cookie sessions
+- Docker (containerized app, run on ECS Fargate with autoscaling)
+- MySQL (Multi-AZ RDS), schema managed by in-app migrations
+- Amazon Cognito (users and roles), Secrets Manager, S3 (attachments)
+- CloudWatch + SNS (structured logs, dashboard, alarms)
+- Terraform for infrastructure as code, GitHub Actions for CI/CD

@@ -22,7 +22,7 @@ resource "aws_subnet" "public" {
   tags                    = { Name = "${var.project_name}-public-${count.index}" }
 }
 
-# ---- Private subnets (EC2 app, RDS) ----
+# ---- Private subnets (Fargate tasks, RDS) ----
 resource "aws_subnet" "private" {
   count             = length(var.private_subnet_cidrs)
   vpc_id            = aws_vpc.main.id
