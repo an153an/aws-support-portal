@@ -174,6 +174,8 @@ Anyone can self-register on `/register`; they start as a `customer`. Create the 
 scripts/create-admin.sh you@example.com 'A-Str0ng-Passw0rd' "Your Name"
 ```
 
+Admins manage roles on **Users** (`/admin/users`); the change takes effect on the user's next request. Agents and admins can assign any ticket to an agent/admin from the ticket list.
+
 Pages: `/login`, `/register`, and a **Sign out** button in the nav. Every other route requires sign-in (unauthenticated requests are redirected to `/login?next=…`), and customers only see tickets they created.
 
 Sessions are a signed, HTTP-only, `SameSite=Lax` cookie (8 hours). The cookie is only marked `Secure` when `COOKIE_SECURE=true`, because the ALB currently serves plain HTTP — add an ACM certificate + HTTPS listener before using real passwords, then set that variable.

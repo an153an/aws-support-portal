@@ -43,4 +43,12 @@ module.exports = [
       `ALTER TABLE tickets ADD INDEX idx_tickets_created_by (created_by)`,
     ],
   },
+  {
+    id: 3,
+    name: 'ticket assignment',
+    sql: [
+      `ALTER TABLE tickets ADD COLUMN assignee_sub VARCHAR(64) NULL`,
+      `ALTER TABLE tickets ADD INDEX idx_tickets_assignee (assignee_sub)`,
+    ],
+  },
 ];

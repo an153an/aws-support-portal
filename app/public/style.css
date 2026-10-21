@@ -36,3 +36,4 @@ form .link-button:hover { background: none; color: #fff; }
 .auth-box { max-width: 380px; margin: 4rem auto; padding: 0 1rem; }
 .auth-box label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; }
 .alert { background: #fee2e2; color: #991b1b; padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+.notice { background: #dcfce7; color: #166534; padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }

@@ -23,7 +23,7 @@
             <strong><%= t.subject %></strong>
             <span class="status status-<%= t.status %>"><%= t.status %></span>
           </div>
-          <p class="muted">From <%= t.requester %> &middot; <%= new Date(t.created_at).toLocaleString() %></p>
+          <p class="muted">From <%= t.requester %> &middot; <%= new Date(t.created_at).toLocaleString() %> &middot; <%= t.assignee_name ? 'Assigned to ' + t.assignee_name : 'Unassigned' %></p>
           <p><%= t.description %></p>
           <div class="card-actions">
             <% if (user.role !== 'customer') { %>
@@ -32,6 +32,14 @@
                   <option value="open" <%= t.status === 'open' ? 'selected' : '' %>>Open</option>
                   <option value="in_progress" <%= t.status === 'in_progress' ? 'selected' : '' %>>In Progress</option>
                   <option value="closed" <%= t.status === 'closed' ? 'selected' : '' %>>Closed</option>
+                </select>
+              </form>
+              <form action="/tickets/<%= t.id %>/assign" method="POST">
+                <select name="assignee" onchange="this.form.submit()">
+                  <option value="">Unassigned</option>
+                  <% staff.forEach(function(s) { %>
+                    <option value="<%= s.sub %>" <%= t.assignee_sub === s.sub ? 'selected' : '' %>><%= s.name %></option>
+                  <% }) %>
                 </select>
               </form>
             <% } %>

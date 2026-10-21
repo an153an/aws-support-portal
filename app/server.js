@@ -110,15 +110,27 @@ app.post('/logout', (req, res) => {
 // Everything below requires a signed-in user.
 app.use(requireLogin);
 
+// The role in the cookie can be stale after an admin changes it, so take the
+// current one from the users table on every request.
+app.use(wrap(async (req, res, next) => {
+  const [rows] = await pool.query('SELECT role FROM users WHERE sub = ?', [req.user.sub]);
+  if (rows.length) req.user.role = res.locals.user.role = rows[0].role;
+  next();
+}));
+
+const getStaff = async () => (await pool.query(
+  "SELECT sub, name, role FROM users WHERE role IN ('agent', 'admin') ORDER BY name"))[0];
+
 app.get('/', (req, res) => res.redirect('/tickets'));
 
 // ---- Tickets ----
 // Customers only ever see tickets they created; agents and admins see all.
 app.get('/tickets', wrap(async (req, res) => {
+  const select = 'SELECT t.*, a.name AS assignee_name FROM tickets t LEFT JOIN users a ON a.sub = t.assignee_sub';
   const [rows] = isStaff(req.user)
-    ? await pool.query('SELECT * FROM tickets ORDER BY created_at DESC')
-    : await pool.query('SELECT * FROM tickets WHERE created_by = ? ORDER BY created_at DESC', [req.user.sub]);
-  res.render('tickets', { tickets: rows });
+    ? await pool.query(`${select} ORDER BY t.created_at DESC`)
+    : await pool.query(`${select} WHERE t.created_by = ? ORDER BY t.created_at DESC`, [req.user.sub]);
+  res.render('tickets', { tickets: rows, staff: isStaff(req.user) ? await getStaff() : [] });
 }));
 
 app.post('/tickets', wrap(async (req, res) => {
@@ -134,6 +146,16 @@ app.post('/tickets/:id/status', staffOnly, wrap(async (req, res) => {
   const { status } = req.body;
   if (!['open', 'in_progress', 'closed'].includes(status)) return res.redirect('/tickets');
   await pool.query('UPDATE tickets SET status = ? WHERE id = ?', [status, req.params.id]);
+  res.redirect('/tickets');
+}));
+
+app.post('/tickets/:id/assign', staffOnly, wrap(async (req, res) => {
+  const assignee = req.body.assignee || null;
+  if (assignee) {
+    const [rows] = await pool.query("SELECT sub FROM users WHERE sub = ? AND role IN ('agent', 'admin')", [assignee]);
+    if (!rows.length) return res.status(400).render('error', { title: 'Invalid assignee', message: 'Tickets can only be assigned to agents or admins.' });
+  }
+  await pool.query('UPDATE tickets SET assignee_sub = ? WHERE id = ?', [assignee, req.params.id]);
   res.redirect('/tickets');
 }));
 
@@ -166,6 +188,23 @@ app.post('/kb', staffOnly, wrap(async (req, res) => {
 app.post('/kb/:id/delete', adminOnly, wrap(async (req, res) => {
   await pool.query('DELETE FROM articles WHERE id = ?', [req.params.id]);
   res.redirect('/kb');
+}));
+
+// ---- User management (admin) ----
+app.get('/admin/users', adminOnly, wrap(async (req, res) => {
+  const [rows] = await pool.query('SELECT sub, email, name, role, last_login FROM users ORDER BY name');
+  res.render('users', { users: rows, roles: auth.ROLES, message: req.query.msg || null });
+}));
+
+app.post('/admin/users/:sub/role', adminOnly, wrap(async (req, res) => {
+  const { role } = req.body;
+  if (!auth.ROLES.includes(role)) return res.redirect('/admin/users');
+  if (req.params.sub === req.user.sub) return res.redirect('/admin/users?msg=' + encodeURIComponent("You can't change your own role."));
+  const [rows] = await pool.query('SELECT email FROM users WHERE sub = ?', [req.params.sub]);
+  if (!rows.length) return res.redirect('/admin/users');
+  await auth.setRole(rows[0].email, role);
+  await pool.query('UPDATE users SET role = ? WHERE sub = ?', [role, req.params.sub]);
+  res.redirect('/admin/users?msg=' + encodeURIComponent('Role updated.'));
 }));
 
 app.use((req, res) => res.status(404).render('error', { title: 'Not found', message: 'That page does not exist.' }));

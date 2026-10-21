@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Users - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <h1>Users</h1>
+    <p class="muted">People appear here after their first sign-in. A role change applies on their next request.</p>
+    <% if (message) { %><div class="notice"><%= message %></div><% } %>
+    <div class="list">
+      <% users.forEach(function(u) { %>
+        <div class="card">
+          <div class="card-header">
+            <strong><%= u.name %></strong>
+            <span class="role role-<%= u.role %>"><%= u.role %></span>
+          </div>
+          <p class="muted"><%= u.email %> &middot; last sign-in <%= u.last_login ? new Date(u.last_login).toLocaleString() : 'never' %></p>
+          <div class="card-actions">
+            <form action="/admin/users/<%= u.sub %>/role" method="POST">
+              <select name="role" onchange="this.form.submit()" <%= u.sub === user.sub ? 'disabled' : '' %>>
+                <% roles.forEach(function(r) { %>
+                  <option value="<%= r %>" <%= u.role === r ? 'selected' : '' %>><%= r %></option>
+                <% }) %>
+              </select>
+            </form>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</body>
+</html>
