@@ -40,11 +40,6 @@ variable "db_username" {
   default = "admin"
 }
 
-variable "db_password" {
-  description = "Master password for RDS (set via terraform.tfvars or TF_VAR_db_password)"
-  sensitive   = true
-}
-
 variable "db_snapshot_identifier" {
   description = "RDS snapshot to restore the database from. Leave null to create a fresh, empty database instead."
   type        = string

@@ -50,13 +50,20 @@ resource "aws_ecs_task_definition" "app" {
 
       environment = [
         { name = "PORT", value = "3000" },
-        { name = "DB_HOST", value = aws_db_instance.main.address },
-        { name = "DB_PORT", value = "3306" },
-        { name = "DB_USER", value = var.db_username },
-        { name = "DB_PASSWORD", value = var.db_password },
-        { name = "DB_NAME", value = var.db_name },
+        { name = "AWS_REGION", value = var.aws_region },
         { name = "ASSETS_BUCKET", value = aws_s3_bucket.assets.bucket },
         { name = "ASSETS_KEY", value = aws_s3_object.style_css.key },
+      ]
+
+      # Pulled from Secrets Manager by the ECS agent at task start (using the
+      # execution role) — the values never appear in the task definition,
+      # Terraform variables, or the image.
+      secrets = [
+        { name = "DB_HOST", valueFrom = "${aws_secretsmanager_secret.db.arn}:host::" },
+        { name = "DB_PORT", valueFrom = "${aws_secretsmanager_secret.db.arn}:port::" },
+        { name = "DB_USER", valueFrom = "${aws_secretsmanager_secret.db.arn}:username::" },
+        { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.db.arn}:password::" },
+        { name = "DB_NAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:dbname::" },
       ]
 
       logConfiguration = {

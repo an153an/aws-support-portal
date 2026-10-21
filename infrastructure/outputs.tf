@@ -16,3 +16,8 @@ output "ecr_repository_url" {
   description = "Push built images here before the ECS service can start tasks"
   value       = aws_ecr_repository.app.repository_url
 }
+
+output "db_secret_arn" {
+  description = "Secrets Manager secret holding the DB credentials"
+  value       = aws_secretsmanager_secret.db.arn
+}

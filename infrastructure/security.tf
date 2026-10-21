@@ -93,6 +93,22 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Lets the ECS agent (not the app) read the secrets it injects into the
+# container as environment variables at task start.
+resource "aws_iam_role_policy" "ecs_execution_secrets" {
+  name = "${var.project_name}-ecs-execution-secrets"
+  role = aws_iam_role.ecs_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = [aws_secretsmanager_secret.db.arn]
+    }]
+  })
+}
+
 # ---- ECS task role: what the *application code itself* is allowed to do
 # (least privilege, same scope as the old EC2 role — read one S3 bucket). ----
 resource "aws_iam_role" "ecs_task_role" {
