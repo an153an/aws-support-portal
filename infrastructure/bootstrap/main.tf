@@ -98,7 +98,8 @@ locals {
   oidc_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
 }
 
-# Deploy role: assumable ONLY by workflow runs on this repo's main branch.
+# Deploy role: assumable ONLY by workflow runs of this repo on main or in the
+# `production` environment.
 resource "aws_iam_role" "deploy" {
   name = "${var.project_name}-github-deploy"
 
@@ -111,7 +112,12 @@ resource "aws_iam_role" "deploy" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:refs/heads/main"
+          # A job that declares `environment: production` is identified to AWS by the
+          # environment, not the branch, so both identities must be trusted.
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:${var.github_repo}:ref:refs/heads/main",
+            "repo:${var.github_repo}:environment:production",
+          ]
         }
       }
     }]
