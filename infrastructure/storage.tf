@@ -1,4 +1,6 @@
-# ---- S3 bucket for static assets / app config ----
+# ---- S3 bucket for static assets and ticket attachments ----
+# Static assets live under static/, user uploads under attachments/. The bucket
+# is private; attachments are only ever served via short-lived presigned URLs.
 resource "aws_s3_bucket" "assets" {
   bucket = "${var.project_name}-assets-${data.aws_caller_identity.current.account_id}"
   tags   = { Name = "${var.project_name}-assets" }

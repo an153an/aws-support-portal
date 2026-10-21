@@ -110,7 +110,8 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
 }
 
 # ---- ECS task role: what the *application code itself* is allowed to do
-# (least privilege, same scope as the old EC2 role — read one S3 bucket). ----
+# (least privilege: read one S3 bucket, write/delete only its attachments/
+# prefix, and manage users in one Cognito pool). ----
 resource "aws_iam_role" "ecs_task_role" {
   name = "${var.project_name}-ecs-task-role"
 
@@ -135,6 +136,13 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:ListBucket"]
         Resource = [aws_s3_bucket.assets.arn, "${aws_s3_bucket.assets.arn}/*"]
+      },
+      {
+        # Ticket attachments: upload and delete only under attachments/ (the
+        # static asset prefix stays read-only for the app).
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.assets.arn}/attachments/*"
       },
       {
         # Self-registration and role changes go through the Cognito admin API.

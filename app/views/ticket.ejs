@@ -48,6 +48,29 @@
       <% } %>
     </div>
 
+    <h2 id="attachments">Attachments (<%= attachments.length %>)</h2>
+    <% if (!attachments.length) { %><p class="muted">No files attached.</p><% } %>
+    <% attachments.forEach(function(f) { %>
+      <div class="card attachment">
+        <a href="/tickets/<%= ticket.id %>/attachments/<%= f.id %>"><%= f.filename %></a>
+        <span class="muted"><%= formatBytes(Number(f.size_bytes)) %> &middot; <%= f.uploaded_by_name %> &middot; <%= new Date(f.created_at).toLocaleString() %></span>
+        <% if (user.role !== 'customer' || f.uploaded_by_sub === user.sub) { %>
+          <form action="/tickets/<%= ticket.id %>/attachments/<%= f.id %>/delete" method="POST" onsubmit="return confirm('Remove <%= f.filename.replace(/'/g, '') %>?')">
+            <button type="submit">Remove</button>
+          </form>
+        <% } %>
+      </div>
+    <% }) %>
+    <% if (uploadsEnabled) { %>
+      <form action="/tickets/<%= ticket.id %>/attachments" method="POST" enctype="multipart/form-data" class="card-form">
+        <input type="file" name="file" required>
+        <p class="muted">Up to <%= maxMb %> MB: images, PDF, text/log/CSV/JSON, Office documents, ZIP.</p>
+        <button type="submit">Attach file</button>
+      </form>
+    <% } else { %>
+      <p class="muted">File uploads are unavailable (no storage bucket configured).</p>
+    <% } %>
+
     <h2 id="comments">Comments (<%= commentCount %>)</h2>
     <% if (!thread.length) { %><p class="muted">No comments yet.</p><% } %>
     <% thread.forEach(function(c) { %>

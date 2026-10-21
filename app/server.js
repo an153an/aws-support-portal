@@ -6,7 +6,9 @@ const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 const cookieSession = require('cookie-session');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const multer = require('multer');
 const auth = require('./auth');
+const storage = require('./storage');
 const { pool, migrate } = require('./db');
 
 const app = express();
@@ -32,6 +34,11 @@ app.use(auth.attachUser);
 
 // Express 4 does not catch rejected promises from async handlers; without this
 // a failed query would crash the process.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.log', '.csv', '.json', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx']);
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
+app.locals.formatBytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const { requireLogin, requireRole, isStaff } = auth;
@@ -271,11 +278,12 @@ app.get('/tickets/:id', wrap(async (req, res) => {
   if (!ticket) return;
   const [comments] = await pool.query('SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY created_at, id', [ticket.id]);
   const [history] = await pool.query('SELECT * FROM ticket_history WHERE ticket_id = ? ORDER BY created_at, id', [ticket.id]);
+  const [attachments] = await pool.query('SELECT * FROM ticket_attachments WHERE ticket_id = ? ORDER BY created_at, id', [ticket.id]);
   // Nest replies under their parent comment.
   const byId = new Map(comments.map((c) => [c.id, { ...c, replies: [] }]));
   const thread = [];
   for (const c of byId.values()) (byId.get(c.parent_id) ? byId.get(c.parent_id).replies : thread).push(c);
-  res.render('ticket', { ticket, canEdit: canEdit(req.user, ticket), thread, commentCount: comments.length, history, staff: isStaff(req.user) ? await getStaff() : [] });
+  res.render('ticket', { ticket, attachments, uploadsEnabled: storage.enabled(), maxMb: MAX_UPLOAD_BYTES / 1048576, canEdit: canEdit(req.user, ticket), thread, commentCount: comments.length, history, staff: isStaff(req.user) ? await getStaff() : [] });
 }));
 
 app.post('/tickets/:id/comments', wrap(async (req, res) => {
@@ -329,6 +337,63 @@ app.post('/tickets/:id/edit', wrap(async (req, res) => {
   res.redirect(`/tickets/${ticket.id}`);
 }));
 
+// ---- Attachments ----
+// multer runs first, so a too-large file is rejected before any ticket lookup;
+// its errors are turned into a friendly page rather than a 500.
+const receiveFile = (req, res, next) => upload.single('file')(req, res, (err) => {
+  if (!err) return next();
+  const tooBig = err.code === 'LIMIT_FILE_SIZE';
+  res.status(tooBig ? 413 : 400).render('error', {
+    title: 'Upload failed',
+    message: tooBig ? `Files can be at most ${MAX_UPLOAD_BYTES / 1048576} MB.` : 'The upload could not be processed.',
+  });
+});
+
+app.post('/tickets/:id/attachments', receiveFile, wrap(async (req, res) => {
+  const ticket = await loadTicket(req, res);
+  if (!ticket) return;
+  const fail = (message) => res.status(400).render('error', { title: 'Upload failed', message });
+  if (!storage.enabled()) return fail('File storage is not configured.');
+  if (!req.file) return fail('Choose a file to attach.');
+  const filename = storage.safeName(req.file.originalname);
+  const ext = path.extname(filename).toLowerCase();
+  if (!ALLOWED_EXTENSIONS.has(ext)) return fail(`Files of type "${ext || 'unknown'}" are not allowed.`);
+  const key = storage.keyFor(ticket.id, filename);
+  await storage.put(key, req.file.buffer, req.file.mimetype || 'application/octet-stream');
+  await pool.query(
+    `INSERT INTO ticket_attachments (ticket_id, s3_key, filename, content_type, size_bytes, uploaded_by_sub, uploaded_by_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [ticket.id, key, filename, req.file.mimetype || 'application/octet-stream', req.file.size, req.user.sub, req.user.name]);
+  await logChange(ticket.id, req.user, 'attachment', null, `added ${filename}`.slice(0, 255));
+  res.redirect(`/tickets/${ticket.id}#attachments`);
+}));
+
+// Redirects to a short-lived presigned S3 URL after the access check, so the
+// bucket stays private and the link can't be shared for long.
+app.get('/tickets/:id/attachments/:aid', wrap(async (req, res) => {
+  const ticket = await loadTicket(req, res);
+  if (!ticket) return;
+  const [rows] = await pool.query('SELECT * FROM ticket_attachments WHERE id = ? AND ticket_id = ?', [req.params.aid, ticket.id]);
+  if (!rows.length) return res.status(404).render('error', { title: 'Not found', message: 'That attachment does not exist.' });
+  res.redirect(await storage.downloadUrl(rows[0].s3_key, rows[0].filename));
+}));
+
+app.post('/tickets/:id/attachments/:aid/delete', wrap(async (req, res) => {
+  const ticket = await loadTicket(req, res);
+  if (!ticket) return;
+  const [rows] = await pool.query('SELECT * FROM ticket_attachments WHERE id = ? AND ticket_id = ?', [req.params.aid, ticket.id]);
+  const file = rows[0];
+  if (file) {
+    if (!isStaff(req.user) && file.uploaded_by_sub !== req.user.sub) {
+      return res.status(403).render('error', { title: 'Not allowed', message: 'You can only remove files you uploaded.' });
+    }
+    await storage.remove(file.s3_key);
+    await pool.query('DELETE FROM ticket_attachments WHERE id = ?', [file.id]);
+    await logChange(ticket.id, req.user, 'attachment', `removed ${file.filename}`.slice(0, 255), null);
+  }
+  res.redirect(`/tickets/${ticket.id}#attachments`);
+}));
+
 app.post('/tickets/:id/status', staffOnly, wrap(async (req, res) => {
   const status = pick(req.body.status, STATUSES);
   const [rows] = await pool.query('SELECT status FROM tickets WHERE id = ?', [req.params.id]);
@@ -358,6 +423,9 @@ app.post('/tickets/:id/assign', staffOnly, wrap(async (req, res) => {
 }));
 
 app.post('/tickets/:id/delete', adminOnly, wrap(async (req, res) => {
+  // The rows cascade, but the S3 objects don't — remove them first (best effort).
+  const [files] = await pool.query('SELECT s3_key FROM ticket_attachments WHERE ticket_id = ?', [req.params.id]);
+  await Promise.all(files.map((f) => storage.remove(f.s3_key).catch((err) => console.error('Could not delete attachment', f.s3_key, err.message))));
   await pool.query('DELETE FROM tickets WHERE id = ?', [req.params.id]);
   res.redirect('/tickets');
 }));

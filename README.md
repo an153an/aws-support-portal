@@ -105,12 +105,23 @@ IAM side — **two roles**, intentionally split by what they're allowed to do:
         "arn:aws:s3:::support-portal-assets-<account-id>",
         "arn:aws:s3:::support-portal-assets-<account-id>/*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::support-portal-assets-<account-id>/attachments/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserPassword", "cognito-idp:AdminAddUserToGroup",
+                 "cognito-idp:AdminRemoveUserFromGroup", "cognito-idp:AdminListGroupsForUser"],
+      "Resource": "arn:aws:cognito-idp:<region>:<account-id>:userpool/<pool-id>"
     }
   ]
 }
 ```
 
-Scoped to one bucket ARN (not `"*"`) — no `PutObject`/`DeleteObject`/`iam:*`/`ecs:*`. Splitting execution vs. task roles means a compromised app container still can't touch ECS/ECR/CloudWatch permissions — those belong to a role the app never assumes.
+Scoped to one bucket ARN (not `"*"`); writes (`PutObject`/`DeleteObject`) are limited to the `attachments/*` prefix, and there is no `iam:*`/`ecs:*`. Splitting execution vs. task roles means a compromised app container still can't touch ECS/ECR/CloudWatch permissions — those belong to a role the app never assumes.
 
 **Current IAM footprint is exactly these two roles** — `ecs_execution_role` and `ecs_task_role`, both defined here in `security.tf`, nothing attached outside of Terraform. (An earlier EC2-based iteration of this project briefly attached the AWS-managed `AmazonSSMManagedInstanceCore` policy to a since-deleted EC2 role, purely to debug a boot failure over Systems Manager — it was detached again immediately after and no longer exists, since that role itself was removed in the move to Fargate.)
 
@@ -187,6 +198,8 @@ Tickets and articles are **editable**: staff can edit any ticket or article; a c
 Staff get a **Dashboard** (`/dashboard`, their landing page): ticket counts by status, open tickets by priority, unassigned/mine/last-7-days counts, and **average time to close** (`closed_at − created_at`; tickets closed before this feature existed have no `closed_at` and are excluded).
 
 Lists are **paginated** (10 per page) and **sortable** (`sort=newest|oldest|priority|status|subject` for tickets, `newest|oldest|title` for articles); search, sort and page combine in the URL. Sort keys are looked up in a whitelist, never put into SQL. Deleting a ticket or article shows a **confirmation prompt**.
+
+**Attachments:** each ticket accepts files (up to 10 MB; images, PDF, text/log/CSV/JSON, Office documents, ZIP). The app uploads them to the private S3 bucket under `attachments/<ticket-id>/…` and serves downloads by redirecting to a **presigned URL** valid for 5 minutes, after checking the user may see the ticket — the bucket itself is never public. Customers can remove files they uploaded; staff can remove any. Deleting a ticket deletes its S3 objects. Uploads and removals appear in the ticket history.
 
 Pages: `/login`, `/register`, and a **Sign out** button in the nav. Every other route requires sign-in (unauthenticated requests are redirected to `/login?next=…`), and customers only see tickets they created.
 

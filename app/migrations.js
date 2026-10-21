@@ -100,4 +100,24 @@ module.exports = [
       `ALTER TABLE articles ADD COLUMN updated_at TIMESTAMP NULL`,
     ],
   },
+  {
+    id: 7,
+    name: 'ticket attachments',
+    sql: [
+      // The file itself lives in S3 under s3_key; this row is its metadata.
+      `CREATE TABLE IF NOT EXISTS ticket_attachments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_id INT NOT NULL,
+        s3_key VARCHAR(512) NOT NULL,
+        filename VARCHAR(255) NOT NULL,
+        content_type VARCHAR(255) NOT NULL,
+        size_bytes BIGINT NOT NULL,
+        uploaded_by_sub VARCHAR(64) NOT NULL,
+        uploaded_by_name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_attachments_ticket (ticket_id),
+        FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+      )`,
+    ],
+  },
 ];
