@@ -104,7 +104,7 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
-      Resource = [aws_secretsmanager_secret.db.arn]
+      Resource = [aws_secretsmanager_secret.db.arn, aws_secretsmanager_secret.session.arn]
     }]
   })
 }
@@ -135,6 +135,19 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:ListBucket"]
         Resource = [aws_s3_bucket.assets.arn, "${aws_s3_bucket.assets.arn}/*"]
+      },
+      {
+        # Self-registration and role changes go through the Cognito admin API.
+        # Sign-in itself (InitiateAuth) is a public call and needs no IAM.
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminSetUserPassword",
+          "cognito-idp:AdminAddUserToGroup",
+          "cognito-idp:AdminRemoveUserFromGroup",
+          "cognito-idp:AdminListGroupsForUser",
+        ]
+        Resource = aws_cognito_user_pool.main.arn
       }
     ]
   })

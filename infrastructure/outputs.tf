@@ -21,3 +21,11 @@ output "db_secret_arn" {
   description = "Secrets Manager secret holding the DB credentials"
   value       = aws_secretsmanager_secret.db.arn
 }
+
+output "cognito_user_pool_id" {
+  value = aws_cognito_user_pool.main.id
+}
+
+output "cognito_client_id" {
+  value = aws_cognito_user_pool_client.app.id
+}

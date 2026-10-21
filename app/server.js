@@ -4,7 +4,9 @@ const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
 const { pipeline } = require('stream/promises');
+const cookieSession = require('cookie-session');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const auth = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +15,19 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
+
+// Behind the ALB the client's connection is HTTP; trust X-Forwarded-* from it.
+app.set('trust proxy', 1);
+if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; using a random key (sessions reset on restart).');
+app.use(cookieSession({
+  name: 'sp_session',
+  keys: [process.env.SESSION_SECRET || require('crypto').randomBytes(32).toString('hex')],
+  maxAge: 8 * 60 * 60 * 1000, // matches the 8h Cognito ID token lifetime
+  httpOnly: true,
+  sameSite: 'lax', // blocks cross-site form POSTs, which is the CSRF vector for this app
+  secure: process.env.COOKIE_SECURE === 'true', // set once the ALB serves HTTPS
+}));
+app.use(auth.attachUser);
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,

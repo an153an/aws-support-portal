@@ -51,6 +51,8 @@ resource "aws_ecs_task_definition" "app" {
       environment = [
         { name = "PORT", value = "3000" },
         { name = "AWS_REGION", value = var.aws_region },
+        { name = "COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.main.id },
+        { name = "COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.app.id },
         { name = "ASSETS_BUCKET", value = aws_s3_bucket.assets.bucket },
         { name = "ASSETS_KEY", value = aws_s3_object.style_css.key },
       ]
@@ -64,6 +66,7 @@ resource "aws_ecs_task_definition" "app" {
         { name = "DB_USER", valueFrom = "${aws_secretsmanager_secret.db.arn}:username::" },
         { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.db.arn}:password::" },
         { name = "DB_NAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:dbname::" },
+        { name = "SESSION_SECRET", valueFrom = aws_secretsmanager_secret.session.arn },
       ]
 
       logConfiguration = {
