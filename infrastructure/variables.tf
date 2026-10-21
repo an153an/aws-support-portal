@@ -51,3 +51,21 @@ variable "alert_email" {
   type        = string
   default     = ""
 }
+
+variable "min_tasks" {
+  description = "Minimum (and initial) number of Fargate tasks; keep >= 2 so the service spans both AZs"
+  type        = number
+  default     = 2
+}
+
+variable "max_tasks" {
+  description = "Maximum number of Fargate tasks autoscaling may run"
+  type        = number
+  default     = 6
+}
+
+variable "requests_per_task_target" {
+  description = "Target ALB requests per task per minute for the request-count scaling policy"
+  type        = number
+  default     = 200
+}

@@ -86,7 +86,7 @@ resource "aws_ecs_service" "app" {
   name            = "${var.project_name}-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = 2
+  desired_count   = var.min_tasks # initial size only; autoscaling owns it afterwards
   launch_type     = "FARGATE"
 
   network_configuration {
@@ -99,6 +99,12 @@ resource "aws_ecs_service" "app" {
     target_group_arn = aws_lb_target_group.app.arn
     container_name   = "app"
     container_port   = 3000
+  }
+
+  # Autoscaling changes desired_count at runtime; don't let `terraform apply`
+  # reset it back to the initial value.
+  lifecycle {
+    ignore_changes = [desired_count]
   }
 
   depends_on = [aws_lb_listener.http]
