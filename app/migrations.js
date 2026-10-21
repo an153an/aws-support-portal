@@ -92,4 +92,12 @@ module.exports = [
       )`,
     ],
   },
+  {
+    id: 6,
+    name: 'updated_at for edited tickets and articles',
+    sql: [
+      `ALTER TABLE tickets ADD COLUMN updated_at TIMESTAMP NULL`,
+      `ALTER TABLE articles ADD COLUMN updated_at TIMESTAMP NULL`,
+    ],
+  },
 ];

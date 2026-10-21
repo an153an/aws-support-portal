@@ -41,6 +41,7 @@
           </div>
           <p class="muted"><%= new Date(a.created_at).toLocaleString() %></p>
           <div class="card-actions">
+            <% if (user.role !== 'customer') { %><a href="/kb/<%= a.id %>/edit">Edit</a><% } %>
             <% if (user.role === 'admin') { %>
               <form action="/kb/<%= a.id %>/delete" method="POST">
                 <button type="submit">Delete</button>

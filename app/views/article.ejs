@@ -12,6 +12,8 @@
     <h1><%= article.title %></h1>
     <span class="tag"><%= article.category %></span>
     <p class="muted"><%= new Date(article.created_at).toLocaleString() %></p>
+    <% if (user.role !== 'customer') { %><p><a href="/kb/<%= article.id %>/edit">Edit article</a></p><% } %>
+    <% if (article.updated_at) { %><p class="muted">Last edited <%= new Date(article.updated_at).toLocaleString() %></p><% } %>
     <div class="article-body"><%= article.body %></div>
   </div>
 </body>

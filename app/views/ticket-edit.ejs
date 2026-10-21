@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit ticket #<%= ticket.id %> - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <a href="/tickets/<%= ticket.id %>">&larr; Back to ticket</a>
+    <h1>Edit ticket #<%= ticket.id %></h1>
+    <% if (error) { %><div class="alert"><%= error %></div><% } %>
+    <form action="/tickets/<%= ticket.id %>/edit" method="POST" class="card-form">
+      <input type="text" name="subject" value="<%= ticket.subject %>" required>
+      <textarea name="description" required><%= ticket.description %></textarea>
+      <div class="row">
+        <label>Priority
+          <select name="priority">
+            <% PRIORITIES.forEach(function(p) { %><option value="<%= p %>" <%= ticket.priority === p ? 'selected' : '' %>><%= p %></option><% }) %>
+          </select>
+        </label>
+        <label>Category
+          <select name="category">
+            <% CATEGORIES.forEach(function(c) { %><option value="<%= c %>" <%= ticket.category === c ? 'selected' : '' %>><%= c %></option><% }) %>
+          </select>
+        </label>
+      </div>
+      <button type="submit">Save changes</button>
+    </form>
+  </div>
+</body>
+</html>

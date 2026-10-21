@@ -182,6 +182,8 @@ Tickets carry a **priority** (`low`/`medium`/`high`/`urgent`, default `medium`) 
 
 Each ticket has a detail page (`/tickets/:id`) with **threaded comments** (reply to any comment) and a **history** timeline recording every status and assignee change, who made it, and when. Closing a ticket stamps `closed_at` (reopening clears it). Customers can only open and comment on their own tickets; other people's ids return 404.
 
+Tickets and articles are **editable**: staff can edit any ticket or article; a customer can edit their own ticket's subject/description/priority/category until it is closed. Ticket edits are written to the history timeline.
+
 Pages: `/login`, `/register`, and a **Sign out** button in the nav. Every other route requires sign-in (unauthenticated requests are redirected to `/login?next=…`), and customers only see tickets they created.
 
 Sessions are a signed, HTTP-only, `SameSite=Lax` cookie (8 hours). The cookie is only marked `Secure` when `COOKIE_SECURE=true`, because the ALB currently serves plain HTTP — add an ACM certificate + HTTPS listener before using real passwords, then set that variable.

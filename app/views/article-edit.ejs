@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit article - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <a href="/kb/<%= article.id %>">&larr; Back to article</a>
+    <h1>Edit article</h1>
+    <% if (error) { %><div class="alert"><%= error %></div><% } %>
+    <form action="/kb/<%= article.id %>/edit" method="POST" class="card-form">
+      <input type="text" name="title" value="<%= article.title %>" required>
+      <input type="text" name="category" value="<%= article.category %>" required>
+      <textarea name="body" rows="12" required><%= article.body %></textarea>
+      <button type="submit">Save changes</button>
+    </form>
+  </div>
+</body>
+</html>

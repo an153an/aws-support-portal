@@ -22,6 +22,9 @@
       <p class="muted">From <%= ticket.requester %> &middot; opened <%= new Date(ticket.created_at).toLocaleString() %> &middot; <%= ticket.assignee_name ? 'Assigned to ' + ticket.assignee_name : 'Unassigned' %><% if (ticket.closed_at) { %> &middot; closed <%= new Date(ticket.closed_at).toLocaleString() %><% } %></p>
       <div class="article-body"><%= ticket.description %></div>
 
+      <% if (ticket.updated_at) { %><p class="muted">Last edited <%= new Date(ticket.updated_at).toLocaleString() %></p><% } %>
+      <% if (canEdit) { %><p><a href="/tickets/<%= ticket.id %>/edit">Edit ticket</a></p><% } %>
+
       <% if (user.role !== 'customer') { %>
         <div class="card-actions">
           <form action="/tickets/<%= ticket.id %>/status" method="POST">

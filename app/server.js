@@ -200,7 +200,7 @@ app.get('/tickets/:id', wrap(async (req, res) => {
   const byId = new Map(comments.map((c) => [c.id, { ...c, replies: [] }]));
   const thread = [];
   for (const c of byId.values()) (byId.get(c.parent_id) ? byId.get(c.parent_id).replies : thread).push(c);
-  res.render('ticket', { ticket, thread, commentCount: comments.length, history, staff: isStaff(req.user) ? await getStaff() : [] });
+  res.render('ticket', { ticket, canEdit: canEdit(req.user, ticket), thread, commentCount: comments.length, history, staff: isStaff(req.user) ? await getStaff() : [] });
 }));
 
 app.post('/tickets/:id/comments', wrap(async (req, res) => {
@@ -218,6 +218,40 @@ app.post('/tickets/:id/comments', wrap(async (req, res) => {
       [ticket.id, parentId, req.user.sub, req.user.name, body]);
   }
   res.redirect(`/tickets/${ticket.id}#comments`);
+}));
+
+// Staff can edit any ticket; a customer can edit their own until it is closed.
+const canEdit = (user, ticket) => isStaff(user) || (ticket.created_by === user.sub && ticket.status !== 'closed');
+
+app.get('/tickets/:id/edit', wrap(async (req, res) => {
+  const ticket = await loadTicket(req, res);
+  if (!ticket) return;
+  if (!canEdit(req.user, ticket)) return res.status(403).render('error', { title: 'Not allowed', message: 'Closed tickets can only be edited by staff.' });
+  res.render('ticket-edit', { ticket, error: null });
+}));
+
+app.post('/tickets/:id/edit', wrap(async (req, res) => {
+  const ticket = await loadTicket(req, res);
+  if (!ticket) return;
+  if (!canEdit(req.user, ticket)) return res.status(403).render('error', { title: 'Not allowed', message: 'Closed tickets can only be edited by staff.' });
+  const subject = (req.body.subject || '').trim();
+  const description = (req.body.description || '').trim();
+  if (!subject || !description) {
+    return res.status(400).render('ticket-edit', { ticket: { ...ticket, subject, description }, error: 'Subject and description are required.' });
+  }
+  const next = {
+    subject, description,
+    priority: pick(req.body.priority, PRIORITIES, ticket.priority),
+    category: pick(req.body.category, CATEGORIES, ticket.category),
+  };
+  // Record each field that actually changed (the description is long, so only note that it changed).
+  for (const field of ['subject', 'priority', 'category']) {
+    if (next[field] !== ticket[field]) await logChange(ticket.id, req.user, field, ticket[field], next[field].slice(0, 255));
+  }
+  if (next.description !== ticket.description) await logChange(ticket.id, req.user, 'description', null, 'edited');
+  await pool.query('UPDATE tickets SET subject = ?, description = ?, priority = ?, category = ?, updated_at = NOW() WHERE id = ?',
+    [next.subject, next.description, next.priority, next.category, ticket.id]);
+  res.redirect(`/tickets/${ticket.id}`);
 }));
 
 app.post('/tickets/:id/status', staffOnly, wrap(async (req, res) => {
@@ -280,6 +314,22 @@ app.post('/kb', staffOnly, wrap(async (req, res) => {
     [title, category, body]
   );
   res.redirect('/kb');
+}));
+
+app.get('/kb/:id/edit', staffOnly, wrap(async (req, res) => {
+  const [rows] = await pool.query('SELECT * FROM articles WHERE id = ?', [req.params.id]);
+  if (!rows.length) return res.redirect('/kb');
+  res.render('article-edit', { article: rows[0], error: null });
+}));
+
+app.post('/kb/:id/edit', staffOnly, wrap(async (req, res) => {
+  const { title = '', category = '', body = '' } = req.body;
+  if (!title.trim() || !category.trim() || !body.trim()) {
+    return res.status(400).render('article-edit', { article: { id: req.params.id, title, category, body }, error: 'All fields are required.' });
+  }
+  await pool.query('UPDATE articles SET title = ?, category = ?, body = ?, updated_at = NOW() WHERE id = ?',
+    [title.trim(), category.trim(), body, req.params.id]);
+  res.redirect(`/kb/${req.params.id}`);
 }));
 
 app.post('/kb/:id/delete', adminOnly, wrap(async (req, res) => {

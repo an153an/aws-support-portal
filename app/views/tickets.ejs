@@ -66,6 +66,7 @@
           <p class="muted">From <%= t.requester %> &middot; <%= new Date(t.created_at).toLocaleString() %> &middot; <%= t.assignee_name ? 'Assigned to ' + t.assignee_name : 'Unassigned' %></p>
           <p><%= t.description %></p>
           <div class="card-actions">
+            <% if (user.role !== 'customer' || t.status !== 'closed') { %><a href="/tickets/<%= t.id %>/edit">Edit</a><% } %>
             <% if (user.role !== 'customer') { %>
               <form action="/tickets/<%= t.id %>/status" method="POST">
                 <select name="status" onchange="this.form.submit()">
