@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title><%= article.title %> - Knowledge Base</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <a href="/kb">&larr; Back to Knowledge Base</a>
+    <h1><%= article.title %></h1>
+    <span class="tag"><%= article.category %></span>
+    <p class="muted"><%= new Date(article.created_at).toLocaleString() %></p>
+    <div class="article-body"><%= article.body %></div>
+  </div>
+</body>
+</html>

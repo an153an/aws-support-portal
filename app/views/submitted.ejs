@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ticket received - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <h1>Ticket received</h1>
+    <div class="card">
+      <p>Thank you. Your ticket number is <strong>#<%= ticketId %></strong>.</p>
+      <p>Keep this number. Use it with the email you entered to <a href="/status">check the status</a> and read our response.</p>
+      <p><a href="/">Submit another ticket</a></p>
+    </div>
+  </div>
+</body>
+</html>

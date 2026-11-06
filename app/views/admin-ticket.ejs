@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ticket #<%= ticket.id %> - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <a href="/admin">&larr; All tickets</a>
+    <div class="card spaced">
+      <div class="card-header">
+        <h2>#<%= ticket.id %> <%= ticket.subject %></h2>
+        <span class="status status-<%= ticket.status %>"><%= ticket.status.replace('_', ' ') %></span>
+      </div>
+      <p class="muted">From <%= ticket.requester %><% if (ticket.email) { %> (<a href="mailto:<%= ticket.email %>"><%= ticket.email %></a>)<% } %> &middot; <%= new Date(ticket.created_at).toLocaleString() %></p>
+      <p class="article-body"><%= ticket.description %></p>
+    </div>
+
+    <h2>Respond</h2>
+    <% if (saved) { %><div class="notice">Saved.</div><% } %>
+    <form action="/admin/tickets/<%= ticket.id %>" method="POST" class="card-form">
+      <textarea name="response" placeholder="Write a response. The requester sees it when they check their ticket." rows="6"><%= ticket.response || '' %></textarea>
+      <label class="inline">Status
+        <select name="status">
+          <% ['open', 'in_progress', 'closed'].forEach(function(s) { %>
+            <option value="<%= s %>" <%= ticket.status === s ? 'selected' : '' %>><%= s.replace('_', ' ') %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button type="submit">Save response</button>
+      <% if (ticket.responded_at) { %><span class="muted">Last responded <%= new Date(ticket.responded_at).toLocaleString() %></span><% } %>
+    </form>
+
+    <form action="/admin/tickets/<%= ticket.id %>/delete" method="POST" onsubmit="return confirm('Delete ticket #<%= ticket.id %>? This cannot be undone.')">
+      <button type="submit">Delete ticket</button>
+    </form>
+  </div>
+</body>
+</html>

@@ -1,0 +1,16 @@
+<nav class="nav">
+  <div class="brand">Support Portal</div>
+  <% if (isAdmin) { %>
+    <a href="/admin">All tickets</a>
+    <a href="/kb">Knowledge Base</a>
+    <div class="nav-right">
+      <span class="badge-admin">Admin</span>
+      <form action="/admin/logout" method="POST"><button type="submit" class="link-button">Sign out</button></form>
+    </div>
+  <% } else { %>
+    <a href="/">Submit a ticket</a>
+    <a href="/status">Check ticket status</a>
+    <a href="/kb">Knowledge Base</a>
+    <div class="nav-right"><a href="/admin/login">Admin sign in</a></div>
+  <% } %>
+</nav>

@@ -1,0 +1,17 @@
+node_modules/
+.env
+*.log
+.DS_Store
+.keys/
+*.pem
+
+# Terraform
+infrastructure/.terraform/
+infrastructure/*.tfstate
+infrastructure/*.tfstate.backup
+infrastructure/.terraform.lock.hcl
+infrastructure/terraform.tfvars
+infrastructure/backend.hcl
+infrastructure/bootstrap/*.tfstate
+infrastructure/bootstrap/*.tfstate.backup
+infrastructure/bootstrap/.terraform/

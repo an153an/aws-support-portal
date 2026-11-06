@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Submit a ticket - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <h1>How can we help?</h1>
+    <p class="muted">Tell us what is wrong and the support team will get back to you. You may find a quick answer in the <a href="/kb">Knowledge Base</a> first.</p>
+    <% if (error) { %><div class="alert"><%= error %></div><% } %>
+    <form action="/tickets" method="POST" class="card-form">
+      <input type="text" name="requester" placeholder="Your name" value="<%= form.requester || '' %>" required>
+      <input type="email" name="email" placeholder="Your email (used to check status later)" value="<%= form.email || '' %>" required>
+      <input type="text" name="subject" placeholder="Subject" value="<%= form.subject || '' %>" required>
+      <textarea name="description" placeholder="Describe the issue" required><%= form.description || '' %></textarea>
+      <button type="submit">Submit ticket</button>
+    </form>
+  </div>
+</body>
+</html>

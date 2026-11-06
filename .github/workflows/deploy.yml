@@ -1,0 +1,161 @@
+name: Build and deploy
+
+# Pull requests  -> test the app, check Terraform, and show `terraform plan`.
+# Push to main   -> all of the above, then build + push the image to ECR and
+#                   `terraform apply` it onto ECS Fargate.
+# Manual runs    -> the "Run workflow" button redeploys the current main.
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', 'infrastructure/**', '.github/workflows/deploy.yml']
+  pull_request:
+    paths: ['app/**', 'infrastructure/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # lets the job request an OIDC token to assume the AWS role (no stored AWS keys)
+
+env:
+  AWS_REGION: us-east-1
+  TF_IN_AUTOMATION: "true"
+
+# Only one deploy at a time; a second push waits instead of racing the first.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test app and validate Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: App smoke tests
+        working-directory: app
+        run: |
+          npm ci
+          npm test
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform fmt + validate (main and bootstrap)
+        run: |
+          terraform fmt -check -recursive infrastructure
+          for dir in infrastructure infrastructure/bootstrap; do
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done
+
+  plan:
+    name: Terraform plan
+    needs: test
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform plan
+        working-directory: infrastructure
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=support-portal/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+          # The image tag only changes at deploy time; planning against
+          # "latest" keeps the PR plan about infrastructure changes.
+          terraform plan -input=false -no-color
+
+  deploy:
+    name: Build image and deploy
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production # add required reviewers to this environment for a manual approval gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false # so `terraform output -raw` returns clean values
+
+      - name: Terraform init
+        working-directory: infrastructure
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=support-portal/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      # The image has to exist in ECR before the ECS service can run it, and the
+      # repository has to exist before the image can be pushed — so create just
+      # the repository first (a no-op after the first run).
+      - name: Ensure the ECR repository exists
+        working-directory: infrastructure
+        run: terraform apply -input=false -auto-approve -target=aws_ecr_repository.app
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Always linux/amd64: Fargate here runs X86_64 (see README: "What actually broke").
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/support-portal-app:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/support-portal-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Terraform apply (rolls the new image onto ECS)
+        working-directory: infrastructure
+        run: terraform apply -input=false -auto-approve -var="image_tag=${{ github.sha }}"
+
+      - name: Wait for ECS to finish the rollout
+        working-directory: infrastructure
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$(terraform output -raw ecs_cluster_name)" \
+            --services "$(terraform output -raw ecs_service_name)"
+
+      - name: Smoke test the live site
+        working-directory: infrastructure
+        run: |
+          URL="http://$(terraform output -raw alb_dns_name)"
+          curl --fail --silent --show-error --retry 10 --retry-delay 15 --retry-all-errors "$URL/health"
+          echo
+          echo "Deployed ${GITHUB_SHA::7} to $URL" | tee -a "$GITHUB_STEP_SUMMARY"

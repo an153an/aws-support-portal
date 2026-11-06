@@ -1,0 +1,37 @@
+# ---- RDS (MySQL) in private subnets ----
+resource "aws_db_subnet_group" "main" {
+  name       = "${var.project_name}-db-subnet-group"
+  subnet_ids = aws_subnet.private[*].id
+  tags       = { Name = "${var.project_name}-db-subnet-group" }
+}
+
+resource "aws_db_instance" "main" {
+  identifier          = "${var.project_name}-db"
+  engine              = "mysql"
+  engine_version      = "8.0"
+  instance_class      = var.db_instance_class
+  allocated_storage   = 20
+  storage_encrypted   = true
+  snapshot_identifier = var.db_snapshot_identifier
+
+  # db_name/username are baked into the snapshot and ignored by AWS when
+  # restoring from one; only set them for a fresh (non-restored) database.
+  db_name  = var.db_snapshot_identifier == null ? var.db_name : null
+  username = var.db_snapshot_identifier == null ? var.db_username : null
+  password = random_password.db.result
+
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.db.id]
+  publicly_accessible    = false
+  skip_final_snapshot    = true
+  multi_az               = var.db_multi_az
+
+  # snapshot_identifier only matters when the instance is first created.
+  # Ignoring it means a pipeline run that doesn't know the snapshot name can
+  # never plan to replace (and so wipe) an existing database.
+  lifecycle {
+    ignore_changes = [snapshot_identifier]
+  }
+
+  tags = { Name = "${var.project_name}-db" }
+}

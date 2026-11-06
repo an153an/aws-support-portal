@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin sign in - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container narrow">
+    <h1>Admin sign in</h1>
+    <% if (error) { %><div class="alert"><%= error %></div><% } %>
+    <form action="/admin/login" method="POST" class="card-form">
+      <input type="password" name="password" placeholder="Admin password" required autofocus>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>

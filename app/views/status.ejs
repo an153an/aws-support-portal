@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Check ticket status - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <h1>Check ticket status</h1>
+    <% if (error) { %><div class="alert"><%= error %></div><% } %>
+    <form action="/status" method="POST" class="card-form">
+      <input type="text" name="ticketId" placeholder="Ticket number, for example 12" value="<%= form.ticketId || '' %>" required>
+      <input type="email" name="email" placeholder="The email you used" value="<%= form.email || '' %>" required>
+      <button type="submit">Look up</button>
+    </form>
+    <% if (ticket) { %>
+      <div class="card">
+        <div class="card-header">
+          <strong>#<%= ticket.id %> <%= ticket.subject %></strong>
+          <span class="status status-<%= ticket.status %>"><%= ticket.status.replace('_', ' ') %></span>
+        </div>
+        <p class="muted">Submitted <%= new Date(ticket.created_at).toLocaleString() %></p>
+        <p><%= ticket.description %></p>
+        <% if (ticket.response) { %>
+          <div class="response">
+            <div class="muted">Response from support<% if (ticket.responded_at) { %> &middot; <%= new Date(ticket.responded_at).toLocaleString() %><% } %></div>
+            <div class="response-body"><%= ticket.response %></div>
+          </div>
+        <% } else { %>
+          <p class="muted">No response yet. We will reply here as soon as we can.</p>
+        <% } %>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>

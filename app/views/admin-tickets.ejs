@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>All tickets - Support Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <%- include('partials-nav') %>
+  <div class="container">
+    <h1>All tickets</h1>
+    <div class="filters">
+      <a href="/admin" class="<%= filter === '' ? 'active' : '' %>">All (<%= counts.open + counts.in_progress + counts.closed %>)</a>
+      <a href="/admin?status=open" class="<%= filter === 'open' ? 'active' : '' %>">Open (<%= counts.open %>)</a>
+      <a href="/admin?status=in_progress" class="<%= filter === 'in_progress' ? 'active' : '' %>">In progress (<%= counts.in_progress %>)</a>
+      <a href="/admin?status=closed" class="<%= filter === 'closed' ? 'active' : '' %>">Closed (<%= counts.closed %>)</a>
+    </div>
+    <% if (!tickets.length) { %><p class="muted">No tickets here.</p><% } %>
+    <div class="list">
+      <% tickets.forEach(function(t) { %>
+        <div class="card">
+          <div class="card-header">
+            <a href="/admin/tickets/<%= t.id %>"><strong>#<%= t.id %> <%= t.subject %></strong></a>
+            <span class="status status-<%= t.status %>"><%= t.status.replace('_', ' ') %></span>
+          </div>
+          <p class="muted">From <%= t.requester %><% if (t.email) { %> (<%= t.email %>)<% } %> &middot; <%= new Date(t.created_at).toLocaleString() %> &middot; <%= t.response ? 'Responded' : 'Needs a response' %></p>
+          <p><%= t.description.length > 160 ? t.description.slice(0, 160) + '…' : t.description %></p>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</body>
+</html>
